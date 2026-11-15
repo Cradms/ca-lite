@@ -8,6 +8,11 @@ enum AppGroupStore {
 
     static var defaults: UserDefaults { Prefs.d }
 
+    /// App Group 是否真的可用（自签时 entitlements 掉了就会 false，小组件读不到数据）
+    static var groupAvailable: Bool {
+        UserDefaults(suiteName: group) != nil
+    }
+
     static func set(_ v: String, _ k: String) { Prefs.set(v, k) }
 
     static func get(_ k: String, _ def: String = "") -> String { Prefs.s(k, def) }

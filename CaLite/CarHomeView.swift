@@ -449,12 +449,20 @@ struct CarHomeView: View {
     }
 
     private var footer: some View {
-        Text("长安开放平台接口 · 指令未完成时其它指令会被拒绝")
-            .font(.system(size: 10))
-            .foregroundColor(Color(hex: 0x8A94A3))
-            .multilineTextAlignment(.center)
-            .frame(maxWidth: .infinity)
-            .padding(.top, 8)
+        VStack(spacing: 4) {
+            Text("长安开放平台接口 · 指令未完成时其它指令会被拒绝")
+                .font(.system(size: 10))
+                .foregroundColor(Color(hex: 0x8A94A3))
+                .multilineTextAlignment(.center)
+            if !AppGroupStore.groupAvailable {
+                Text("App Group 不可用：小组件读不到数据，检查签名里的 group.com.yg.calite")
+                    .font(.system(size: 9.5))
+                    .foregroundColor(Color(hex: 0xE53935))
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 8)
     }
 
     // MARK: - 车辆切换
