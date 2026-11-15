@@ -84,23 +84,13 @@ workflows:
           keychain add-certificates
           xcode-project use-profiles
 
-      - name: 归档
+      - name: 出签名 IPA
         script: |
-          xcodebuild archive \
-            -project CaLite.xcodeproj \
-            -scheme CaLite \
-            -configuration Release \
-            -sdk iphoneos \
-            -archivePath $PWD/build/CaLite.xcarchive \
-            CODE_SIGN_STYLE=Manual | tail -40
-
-      - name: 导出 IPA
-        script: |
-          python3 gen_export_options.py "$BUNDLE_ID" "$CM_TEAM_ID" ad-hoc ""
-          xcodebuild -exportArchive \
-            -archivePath $PWD/build/CaLite.xcarchive \
-            -exportOptionsPlist ExportOptions.plist \
-            -exportPath $PWD/build/ipa | tail -20
-          ls -lh build/ipa
+          set -eo pipefail
+          xcode-project build-ipa \
+            --project CaLite.xcodeproj \
+            --scheme CaLite \
+            --config Release
+          ls -lh build/ios/ipa
     artifacts:
-      - build/ipa/*.ipa
+      - build/ios/ipa/*.ipa
