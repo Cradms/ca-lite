@@ -377,40 +377,51 @@ final class CarAPI {
 
     // MARK: - 扫码登录（开放平台）
 
-    /// 生成二维码：返回 (二维码图片 Data, qrcode_id)
-    func qrCreate() -> (Data?, String) {
-        var p: [String: String] = [:]
-        p["client_id"] = Self.CLIENT_ID
-        p["device_id"] = deviceId
-        p["nonce"] = Self.NONCE
-        p["size"] = "L"
-        p["state"] = "OPPOWATCH"
-        p["timestamp"] = "\(Int(Date().timeIntervalSince1970))"
-        p["sign"] = signBasic(p)
-        p["appCode"] = "usercenter"   // appCode 不参与签名
+    /// 生成二维码（异步，回调回传图片 Data 与 qrcode_id）
+    func qrCreate(done: @escaping (Data?, String) -> Void) {
+        bg {
+            var p: [String: String] = [:]
+            p["client_id"] = Self.CLIENT_ID
+            p["device_id"] = self.deviceId
+            p["nonce"] = Self.NONCE
+            p["size"] = "L"
+            p["state"] = "OPPOWATCH"
+            p["timestamp"] = "\(Int(Date().timeIntervalSince1970))"
+            p["sign"] = self.signBasic(p)
+            p["appCode"] = "usercenter"   // appCode 不参与签名
 
-        guard let u = URL(string: Self.OPEN_HOST + "/oauth/api/qrcode/generate") else { return (nil, "") }
-        var req = URLRequest(url: u)
-        req.httpMethod = "POST"
-        req.setValue("application/x-www-form-urlencoded; charset=UTF-8", forHTTPHeaderField: "Content-Type")
-        req.httpBody = Self.kvString(p).data(using: .utf8)
-
-        var imageData: Data?
-        var qid = ""
-        let sem = DispatchSemaphore(value: 0)
-        session.dataTask(with: req) { d, resp, _ in
-            imageData = d
-            if let h = resp as? HTTPURLResponse {
-                qid = h.value(forHTTPHeaderField: "qrcode_id") ?? ""
+            guard let u = URL(string: Self.OPEN_HOST + "/oauth/api/qrcode/generate") else {
+                DispatchQueue.main.async { done(nil, "") }
+                return
             }
-            sem.signal()
-        }.resume()
-        sem.wait()
-        return (imageData, qid)
+            var req = URLRequest(url: u)
+            req.httpMethod = "POST"
+            req.setValue(self.UA, forHTTPHeaderField: "User-Agent")
+            req.setValue("application/x-www-form-urlencoded; charset=UTF-8",
+                         forHTTPHeaderField: "Content-Type")
+            req.httpBody = Self.kvString(p).data(using: .utf8)
+
+            var imageData: Data?
+            var qid = ""
+            let sem = DispatchSemaphore(value: 0)
+            self.session.dataTask(with: req) { d, resp, _ in
+                imageData = d
+                if let h = resp as? HTTPURLResponse {
+                    qid = h.value(forHTTPHeaderField: "qrcode_id") ?? ""
+                }
+                sem.signal()
+            }.resume()
+            sem.wait()
+            DispatchQueue.main.async { done(imageData, qid) }
+        }
     }
 
-    /// 轮询扫码状态：authorized / scanned / unauthorized / expired
-    func qrStatus(_ qrId: String) -> String {
+    /// 轮询扫码状态：authorized / scanned / unauthorized / expired（异步回调）
+    func qrStatus(_ qrId: String, done: @escaping (String) -> Void) {
+        bg { done(self.qrStatusSync(qrId)) }
+    }
+
+    private func qrStatusSync(_ qrId: String) -> String {
         var p: [String: String] = [:]
         p["timestamp"] = "\(Int(Date().timeIntervalSince1970))"
         p["nonce"] = Self.NONCE
@@ -435,8 +446,15 @@ final class CarAPI {
         return result.isEmpty ? "unauthorized" : result
     }
 
-    /// 用扫码授权码换 token；返回错误文案，nil 成功
-    func qrExchange() -> String? {
+    /// 用扫码授权码换 token（异步）；回调返回错误文案，nil 成功
+    func qrExchange(done: @escaping (String?) -> Void) {
+        bg {
+            let err = self.qrExchangeSync()
+            DispatchQueue.main.async { done(err) }
+        }
+    }
+
+    private func qrExchangeSync() -> String? {
         let code = Prefs.s(K.authCode)
         guard !code.isEmpty else { return "授权码为空，请重新扫码" }
         var p: [String: String] = [:]
@@ -828,23 +846,60 @@ final class CarAPI {
         }
     }
 
+    /// 车辆定位：/appserver/api/cardata/getCarLocation（源码 miLocation）
+    /// 各车型字段名不统一，坐标与地址都做多别名 + 字符串解析兜底
     private func miLocation() -> (Double, Double, String)? {
         let cid = carId
+        guard !cid.isEmpty, !token.isEmpty else { return nil }
         let url = Self.MI_HOST + "/appserver/api/cardata/getCarLocation?carId=" + Self.urlEncode(cid)
             + "&mapType=AMap&loading=false&ErrorAutoProjectile=false&token=" + Self.urlEncode(token)
         let (d, _) = raw(url, method: "POST", form: [:], headers: miHeaders())
-        guard let o = json(d), (o["code"] as? Int) == 0,
-              let dd = o["data"] as? [String: Any] else { return nil }
-        func c(_ keys: [String]) -> Double {
+        guard let o = json(d) else { return nil }
+        var dd = o["data"] as? [String: Any]
+        if dd == nil, let s = o["data"] as? String, s.contains("{"),
+           let rawD = s.data(using: .utf8),
+           let obj = try? JSONSerialization.jsonObject(with: rawD) as? [String: Any] {
+            dd = obj
+        }
+        guard var body = dd else { return nil }
+        // 可能再套一层
+        for wrap in ["data", "location", "carLocation", "result"] {
+            if let inner = body[wrap] as? [String: Any] { body = inner }
+        }
+
+        func num(_ keys: [String]) -> Double {
             for k in keys {
-                if let v = dd[k] as? Double, v != 0 { return v }
+                if let v = body[k] as? Double, v != 0 { return v }
+                if let v = body[k] as? Int, v != 0 { return Double(v) }
+                if let v = body[k] as? String, let x = Double(v), x != 0 { return x }
             }
             return 0
         }
-        let lat = c(["gcjLat", "lat", "latitude", "amapLat"])
-        let lng = c(["gcjLng", "lng", "longitude", "amapLng"])
-        var addr = (dd["addrDesc"] as? String) ?? ""
-        if addr.isEmpty { addr = (dd["address"] as? String) ?? "" }
+
+        var lat = num(["gcjLat", "amapLat", "lat", "latitude", "carLat", "latGcj"])
+        var lng = num(["gcjLng", "amapLng", "lng", "lon", "longitude", "carLng", "lngGcj"])
+
+        // "lng,lat" 形式的合并字段
+        if lat == 0 || lng == 0 {
+            for k in ["position", "location", "geo", "coordinate", "point"] {
+                if let str = body[k] as? String, str.contains(",") {
+                    let parts = str.split(separator: ",")
+                    if parts.count >= 2,
+                       let a = Double(parts[0].trimmingCharacters(in: .whitespaces)),
+                       let b = Double(parts[1].trimmingCharacters(in: .whitespaces)),
+                       a != 0, b != 0 {
+                        lng = a; lat = b
+                        break
+                    }
+                }
+            }
+        }
+        if lat == 0 || lng == 0 { return nil }
+
+        var addr = ""
+        for k in ["addrDesc", "address", "addr", "formattedAddress", "poiName", "addressDesc"] {
+            if let v = body[k] as? String, !v.isEmpty { addr = v; break }
+        }
         return (lat, lng, addr)
     }
 
@@ -1108,6 +1163,75 @@ final class CarAPI {
                         "name": (p["name"] as? String) ?? ""]
             }
             DispatchQueue.main.async { done(out) }
+        }
+    }
+
+    // MARK: - 多车切换 / 空调温度 / 定位刷新
+
+    /// 绑定车辆列表（多车切换用）
+    func listCars(done: @escaping ([[String: Any]]) -> Void) {
+        bg {
+            self.legacyRefreshIfNeeded(force: false)
+            let url = Self.MI_HOST + "/app2/api/user/cars?type=0&token=" + Self.urlEncode(self.token)
+            let (d, _) = self.raw(url, headers: self.miHeaders())
+            let arr = (self.json(d)?["data"] as? [[String: Any]]) ?? []
+            DispatchQueue.main.async { done(arr) }
+        }
+    }
+
+    /// 切到另一辆车（按 carId + vin 覆盖，再补车型）
+    func selectCar(_ row: [String: Any]) {
+        if let cid = row["carId"] as? String, !cid.isEmpty { carId = cid }
+        if let v = row["vin"] as? String, !v.isEmpty { vin = v }
+        var name = (row["plateNumber"] as? String) ?? ""
+        if name.isEmpty { name = (row["carName"] as? String) ?? "" }
+        if !name.isEmpty { carName = name }
+        if let sc = row["seriesCode"] as? String, !sc.isEmpty { carSeries = sc }
+        if let sn = row["seriesName"] as? String, !sn.isEmpty { carSeriesName = sn }
+        Prefs.setl(0, "c_upd")
+        AppGroupStore.syncCredentials()
+    }
+
+    /// 缓存的空调温度（源码 cachedTemp）
+    var cachedTemp: Int { Prefs.i("air_temp") }
+
+    /// 设置空调温度 16–32（源码 setTemperature：openAir + temperature 参数）
+    func setTemperature(_ t: Int, done: @escaping (Bool, String) -> Void) {
+        let v = max(16, min(32, t))
+        bg {
+            var err = self.miControl("openAir", temp: "\(v)")
+            if err == nil {
+                Prefs.seti(v, "air_temp")
+            } else if let e2 = self.legacyControl("openAir") {
+                err = e2
+            }
+            if err == nil { _ = self.fetchStatus() }
+            DispatchQueue.main.async { done(err == nil, err ?? "温度已设为 \(v)°C") }
+        }
+    }
+
+    /// 主动刷新车辆定位：先走定位接口，失败再拉一次车况兜底
+    func refreshLocation(done: @escaping (Bool, String) -> Void) {
+        bg {
+            self.legacyRefreshIfNeeded(force: false)
+            if let loc = self.miLocation() {
+                Prefs.set("\(loc.0)", "c_lat")
+                Prefs.set("\(loc.1)", "c_lng")
+                Prefs.set(String(format: "%.6f,%.6f", loc.0, loc.1), "c_geo")
+                Prefs.setl(self.nowMs(), "c_locAt")
+                if !loc.2.isEmpty { Prefs.set(loc.2, "c_addr") }
+                self.fetchAddress(loc.0, loc.1)
+                AppGroupStore.syncFromPrefs()
+                DispatchQueue.main.async { done(true, "已定位") }
+                return
+            }
+            _ = self.fetchStatus()
+            let lat = Double(Prefs.s("c_lat", "0")) ?? 0
+            let lng = Double(Prefs.s("c_lng", "0")) ?? 0
+            let msg = (lat != 0 && lng != 0)
+                ? Prefs.s("c_addr")
+                : "车辆未上报位置（车机可能离线，或该车型只上报车况不带坐标）"
+            DispatchQueue.main.async { done(lat != 0 && lng != 0, msg) }
         }
     }
 

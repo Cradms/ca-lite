@@ -171,30 +171,22 @@ struct LocationView: View {
     private func load() {
         loading = true
         errMsg = nil
-        api.location { d in
-            DispatchQueue.main.async {
-                loading = false
-                guard let d = d else { errMsg = "取位置失败"; return }
-                func num(_ k: String) -> Double? {
-                    if let v = d[k] as? Double { return v }
-                    if let v = d[k] as? Int { return Double(v) }
-                    if let v = d[k] as? String { return Double(v) }
-                    return nil
-                }
-                address = (d["address"] as? String) ?? "未知位置"
-                city = (d["city"] as? String) ?? ""
-                gpsTime = (d["gpsTime"] as? String) ?? ""
-                if let sp = num("speed") { speed = String(format: "%.0f", sp) }
-
-                let lat = num("lat") ?? num("latitude") ?? 0
-                let lng = num("lng") ?? num("lon") ?? num("longitude") ?? 0
-                guard lat != 0, lng != 0 else { errMsg = "坐标为空"; return }
-                let coord = CLLocationCoordinate2D(latitude: lat, longitude: lng)
-                pin = CarLocation(coord: coord)
-                region = MKCoordinateRegion(
-                    center: coord,
-                    span: MKCoordinateSpan(latitudeDelta: 0.008, longitudeDelta: 0.008))
+        // 先走定位接口（/appserver/api/cardata/getCarLocation），失败再兜底拉车况
+        api.refreshLocation { ok, msg in
+            let lat = Double(Prefs.s("c_lat", "0")) ?? 0
+            let lng = Double(Prefs.s("c_lng", "0")) ?? 0
+            let addr = Prefs.s("c_addr")
+            loading = false
+            guard ok, lat != 0, lng != 0 else {
+                errMsg = msg.isEmpty ? "取位置失败" : msg
+                return
             }
+            address = addr.isEmpty ? "未知位置" : addr
+            let coord = CLLocationCoordinate2D(latitude: lat, longitude: lng)
+            pin = CarLocation(coord: coord)
+            region = MKCoordinateRegion(
+                center: coord,
+                span: MKCoordinateSpan(latitudeDelta: 0.008, longitudeDelta: 0.008))
         }
     }
 

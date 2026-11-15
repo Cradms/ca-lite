@@ -114,42 +114,88 @@ extension MKPointAnnotation {
     }
 }
 
-// MARK: - 操作记录
+// MARK: - 操作记录（本机执行结果 + 服务器全量，对齐源码 HistoryActivity）
 struct HistoryView: View {
     @State private var rows: [[String: Any]] = []
+    @State private var local: [OpLog] = []
     @State private var loading = true
+    @State private var errMsg = ""
 
     var body: some View {
         List {
-            if loading {
-                HStack { Spacer(); ProgressView(); Spacer() }
-            } else if rows.isEmpty {
-                Text("暂无控车记录").foregroundColor(C.muted)
-            } else {
-                ForEach(Array(rows.enumerated()), id: \.offset) { _, r in
-                    HStack(spacing: 10) {
-                        Image(systemName: icon((r["name"] as? String) ?? ""))
-                            .font(.system(size: 15))
-                            .foregroundColor(C.blue)
-                            .frame(width: 26)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text((r["name"] as? String) ?? "控车操作")
-                                .font(.system(size: 13.5, weight: .medium))
-                                .foregroundColor(C.txt)
-                            Text((r["time"] as? String) ?? "")
-                                .font(.system(size: 11)).foregroundColor(C.faint)
+            Section {
+                if local.isEmpty {
+                    Text("还没有本机记录").foregroundColor(C.muted).font(.system(size: 12))
+                } else {
+                    ForEach(local) { log in
+                        HStack(spacing: 10) {
+                            Image(systemName: log.ok ? "checkmark.circle.fill" : "xmark.circle.fill")
+                                .font(.system(size: 14))
+                                .foregroundColor(log.ok ? C.green : C.red)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(log.cmd)
+                                    .font(.system(size: 13.5, weight: .medium))
+                                    .foregroundColor(C.txt)
+                                Text(timeText(log.time))
+                                    .font(.system(size: 11)).foregroundColor(C.faint)
+                            }
+                            Spacer()
+                            if !log.ok && !log.msg.isEmpty {
+                                Text(log.msg)
+                                    .font(.system(size: 10.5))
+                                    .foregroundColor(C.red)
+                                    .lineLimit(2)
+                                    .frame(maxWidth: 130, alignment: .trailing)
+                            }
                         }
-                        Spacer()
-                        let st = (r["status"] as? String) ?? ""
-                        Text(statusText(st))
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(statusColor(st))
                     }
-                    .padding(.vertical, 3)
+                }
+            } header: {
+                HStack {
+                    Text("本机执行结果")
+                    Spacer()
+                    if !local.isEmpty {
+                        Button("清空") { OpLogStore.clear(); local = [] }
+                            .font(.system(size: 11))
+                    }
                 }
             }
+
+            Section {
+                if loading {
+                    HStack { Spacer(); ProgressView(); Spacer() }
+                } else if !errMsg.isEmpty {
+                    Text(errMsg).font(.system(size: 12)).foregroundColor(C.muted)
+                } else if rows.isEmpty {
+                    Text("服务器没有记录").foregroundColor(C.muted).font(.system(size: 12))
+                } else {
+                    ForEach(Array(rows.enumerated()), id: \.offset) { _, r in
+                        HStack(spacing: 10) {
+                            Image(systemName: icon((r["name"] as? String) ?? ""))
+                                .font(.system(size: 14))
+                                .foregroundColor(C.blue)
+                                .frame(width: 24)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text((r["name"] as? String) ?? "控车操作")
+                                    .font(.system(size: 13.5, weight: .medium))
+                                    .foregroundColor(C.txt)
+                                Text((r["time"] as? String) ?? "")
+                                    .font(.system(size: 11)).foregroundColor(C.faint)
+                            }
+                            Spacer()
+                            let st = (r["status"] as? String) ?? ""
+                            Text(statusText(st))
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(statusColor(st))
+                        }
+                        .padding(.vertical, 2)
+                    }
+                }
+            } header: {
+                Text("长安服务器记录（近 6 个月）")
+            }
         }
-        .listStyle(.plain)
+        .listStyle(.insetGrouped)
         .navigationTitle("操作记录")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -159,14 +205,25 @@ struct HistoryView: View {
                 }
             }
         }
-        .onAppear(perform: load)
+        .onAppear {
+            local = OpLogStore.load()
+            load()
+        }
+    }
+
+    private func timeText(_ t: Double) -> String {
+        let f = DateFormatter()
+        f.dateFormat = "MM-dd HH:mm:ss"
+        return f.string(from: Date(timeIntervalSince1970: t))
     }
 
     private func load() {
         loading = true
+        errMsg = ""
         CarAPI.shared.controlHistory { r in
             rows = r
             loading = false
+            if r.isEmpty { errMsg = "" }
         }
     }
 
@@ -185,10 +242,10 @@ struct HistoryView: View {
     }
 
     private func icon(_ name: String) -> String {
-        if name.contains("锁") && name.contains("解") { return "lock.open" }
+        if name.contains("解") && name.contains("锁") { return "lock.open" }
         if name.contains("锁") { return "lock.fill" }
-        if name.contains("窗") { return "rectangle.split.3x1" }
         if name.contains("天窗") { return "sun.max" }
+        if name.contains("窗") { return "rectangle.split.3x1" }
         if name.contains("空调") { return "snowflake" }
         if name.contains("发动机") || name.contains("启动") { return "power" }
         if name.contains("笛") { return "speaker.wave.2.fill" }

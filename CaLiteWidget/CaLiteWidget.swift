@@ -122,6 +122,7 @@ struct Entry: TimelineEntry {
     let updated: Date
     var modelTitle: String = ""
     var carImage: String = "car"
+    var logged: Bool = false
 }
 
 struct Provider: TimelineProvider {
@@ -129,7 +130,7 @@ struct Provider: TimelineProvider {
         Entry(date: Date(), fuel: "42", range: "601", odo: "54846",
               voltage: "12.2", carName: "UNI-V", online: true,
               anyOpen: false, locked: true, updated: Date(),
-              modelTitle: "UNI-V", carImage: "car_c281")
+              modelTitle: "UNI-V", carImage: "car_c281", logged: true)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (Entry) -> Void) {
@@ -137,10 +138,12 @@ struct Provider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<Entry>) -> Void) {
-        let e = current()
-        // 15 分钟刷新一次（系统可能延迟）
-        let next = Calendar.current.date(byAdding: .minute, value: 15, to: Date()) ?? Date()
-        completion(Timeline(entries: [e], policy: .after(next)))
+        // 小组件自己拉一次车况，不依赖主 App 是否打开过
+        WidgetAPI.refresh {
+            let e = self.current()
+            let next = Calendar.current.date(byAdding: .minute, value: 15, to: Date()) ?? Date()
+            completion(Timeline(entries: [e], policy: .after(next)))
+        }
     }
 
     private func current() -> Entry {
@@ -155,7 +158,8 @@ struct Provider: TimelineProvider {
               locked: Shared.locked,
               updated: Shared.updated,
               modelTitle: Shared.modelTitle,
-              carImage: Shared.carImage)
+              carImage: Shared.carImage,
+              logged: Shared.logged)
     }
 }
 
@@ -173,13 +177,30 @@ struct CaLiteWidgetEntryView: View {
 
     var body: some View {
         Group {
-            switch family {
-            case .systemSmall: smallView
-            case .systemLarge: largeView
-            default: mediumView
+            if !entry.logged {
+                notLoggedView
+            } else {
+                switch family {
+                case .systemSmall: smallView
+                case .systemLarge: largeView
+                default: mediumView
+                }
             }
         }
         .widgetBackground(Color(red: 243/255, green: 246/255, blue: 250/255))
+    }
+
+    /// 没登录 / App Group 拿不到凭据时的占位
+    private var notLoggedView: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "car.fill")
+                .font(.system(size: 24))
+                .foregroundColor(blue.opacity(0.45))
+            Text("打开 CA Lite 登录")
+                .font(.system(size: 11.5, weight: .medium))
+                .foregroundColor(muted)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // 小尺寸：只放油量 + 续航
