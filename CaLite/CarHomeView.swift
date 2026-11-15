@@ -113,12 +113,12 @@ struct CarHomeView: View {
                 }
             }
 
-            Text(stateLine1)
+            stateLine1
                 .font(.system(size: 12))
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
                 .padding(.top, 6)
-            Text(stateLine2)
+            stateLine2
                 .font(.system(size: 12))
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
