@@ -1,94 +1,56 @@
 import SwiftUI
 import WidgetKit
 
-// MARK: - 主题色
-enum C {
-    static let bg     = Color(red: 243/255, green: 246/255, blue: 250/255)
-    static let card   = Color.white
-    static let border = Color(red: 230/255, green: 235/255, blue: 241/255)
-    static let blue   = Color(red: 47/255, green: 111/255, blue: 181/255)
-    static let green  = Color(red: 47/255, green: 158/255, blue: 104/255)
-    static let red    = Color(red: 214/255, green: 69/255, blue: 69/255)
-    static let amber  = Color(red: 217/255, green: 131/255, blue: 36/255)
-    static let txt    = Color(red: 26/255, green: 30/255, blue: 36/255)
-    static let muted  = Color(red: 123/255, green: 133/255, blue: 146/255)
-    static let faint  = Color(red: 152/255, green: 162/255, blue: 175/255)
-}
-
-// MARK: - 卡片容器
-struct Card<Content: View>: View {
-    let content: Content
-    init(@ViewBuilder content: () -> Content) { self.content = content() }
-    var body: some View {
-        content
-            .padding(14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(C.card)
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(C.border, lineWidth: 1))
-    }
-}
-
-// MARK: - 主界面
+/// 首页：按 Android 源码 HomeActivity 1:1 复刻
+///
+/// 布局顺序与源码一致：车辆卡（车名/续航 + 蓝牙钥匙/刷新）→ 状态两行
+/// → 位置卡 → 全宽蓝牙钥匙按钮 → 全景照片/行车轨迹双列
+/// → 7 组控车按钮对 → footer
 struct CarHomeView: View {
-    @State private var st: CarState = CarState()
+    @State private var st = CarState()
     @State private var loading = true
-    @State private var toast: String?
     @State private var showLogin = false
     @State private var showPinSheet = false
     @State private var pinInput = ""
-    @State private var resultTitle = ""
-    @State private var resultMsg = ""
-    @State private var showResult = false
+    @State private var toast: String?
+    @State private var alertMsg: String?
+    @State private var sheet: HomeSheet?
 
     private let api = CarAPI.shared
 
     var body: some View {
         NavigationView {
             ScrollView {
-                VStack(spacing: 10) {
-                    headerCard
-                    if !api.isLoggedIn { loginPrompt }
-                    statusCard
-                    doorCard
-                    quickRow
-                    controlGrid
-                    Spacer(minLength: 20)
+                VStack(spacing: 8) {
+                    carCard
+                    locationCard
+                    btKeyButton
+                    toolButtons
+                    controlPairs
+                    footer
                 }
                 .padding(.horizontal, 14)
-                .padding(.top, 8)
+                .padding(.top, 10)
+                .padding(.bottom, 14)
             }
-            .background(C.bg.ignoresSafeArea())
-            .navigationTitle("车控")
+            .background(KH.bg.ignoresSafeArea())
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button { refresh() } label: {
-                        Image(systemName: "arrow.clockwise").foregroundColor(C.blue)
-                    }
-                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
                         Button {
                             pinInput = CarAPI.shared.controlPin
                             showPinSheet = true
-                        } label: {
-                            Label("设置控车码", systemImage: "lock.shield")
-                        }
-                        Button {
-                            showLogin = true
-                        } label: {
+                        } label: { Label("设置控车码", systemImage: "lock.shield") }
+                        Button { showLogin = true } label: {
                             Label("重新登录", systemImage: "person.badge.key")
                         }
                         Divider()
-                        Button(role: .destructive) {
-                            logout()
-                        } label: {
+                        Button(role: .destructive) { logout() } label: {
                             Label("退出登录", systemImage: "rectangle.portrait.and.arrow.right")
                         }
                     } label: {
-                        Image(systemName: "ellipsis.circle").foregroundColor(C.blue)
+                        Image(systemName: "ellipsis.circle").foregroundColor(KH.blue)
                     }
                 }
             }
@@ -99,18 +61,14 @@ struct CarHomeView: View {
                     .font(.system(size: 13, weight: .medium))
                     .foregroundColor(.white)
                     .padding(.horizontal, 18).padding(.vertical, 10)
-                    .background(C.txt.opacity(0.9))
+                    .background(KH.text.opacity(0.9))
                     .clipShape(Capsule())
                     .padding(.bottom, 30)
                     .transition(.opacity)
             }
         }
         .onAppear {
-            if !api.isLoggedIn {
-                showLogin = true
-            } else {
-                refresh()
-            }
+            if !api.isLoggedIn { showLogin = true } else { refresh() }
         }
         .sheet(isPresented: $showLogin) {
             LoginView {
@@ -118,389 +76,227 @@ struct CarHomeView: View {
                 refresh()
             }
         }
-        .sheet(isPresented: $showPinSheet) {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("控车码")
-                    .font(.system(size: 17, weight: .semibold))
-                Text("长安 App 里设置的 6 位安全码，控车指令要用它做 RSA 加密")
-                    .font(.system(size: 12)).foregroundColor(C.muted)
-                SecureField("6 位数字", text: $pinInput)
-                    .keyboardType(.numberPad)
-                    .padding(12)
-                    .background(C.card)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(C.border))
-                Button {
-                    CarAPI.shared.controlPin = pinInput
-                    showPinSheet = false
-                    toast = "控车码已保存"
-                } label: {
-                    Text("保存")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity).frame(height: 46)
-                        .background(C.blue)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                }
-                Spacer()
+        .sheet(isPresented: $showPinSheet) { pinSheet }
+        .sheet(item: $sheet) { s in
+            switch s {
+            case .location: NavigationView { LocationView() }
+            case .track:    NavigationView { TrackView() }
+            case .photo:    NavigationView { PhotoView() }
+            case .more:     NavigationView { MoreView() }
+            case .history:  NavigationView { HistoryView() }
             }
-            .padding(22)
-            .background(C.bg.ignoresSafeArea())
-            .presentationDetents([.height(280)])
         }
-        .alert(resultTitle, isPresented: $showResult) {
-            Button("好", role: .cancel) {}
-        } message: {
-            Text(resultMsg)
+        .alert(isPresented: Binding(get: { alertMsg != nil },
+                                    set: { if !$0 { alertMsg = nil } })) {
+            Alert(title: Text("提示"), message: Text(alertMsg ?? ""),
+                  dismissButton: .default(Text("好")))
         }
     }
 
-    private func logout() {
-        CarAPI.shared.accessToken = ""
-        CarAPI.shared.refreshToken = ""
-        CarAPI.shared.carId = ""
-        CarAPI.shared.controlPin = ""
-        st = CarState()
-        toast = "已退出登录"
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-            showLogin = true
-        }
-    }
-
-    // MARK: 顶部车名 + 车模图（按车型归一化选图，与源码 CarModelImage 一致）
-    private var headerCard: some View {
-        HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(st.carName.isEmpty ? "我的爱车" : st.carName)
-                    .font(.system(size: 21, weight: .bold))
-                    .foregroundColor(C.txt)
-                    .lineLimit(1)
-                Text(modelTitle)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(C.blue)
+    // MARK: 车辆卡
+    private var carCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top, spacing: 8) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(st.carName.isEmpty ? "我的爱车" : st.carName)
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundColor(KH.text)
+                        .lineLimit(1)
+                    Text("剩余续航：\(st.range.isEmpty ? "--" : st.range) km")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(KH.blue)
+                }
+                Spacer(minLength: 4)
                 HStack(spacing: 6) {
-                    Circle()
-                        .fill(st.online ? C.green : C.faint)
-                        .frame(width: 6, height: 6)
-                    Text(st.online ? "在线" : "离线")
-                        .font(.system(size: 11.5))
-                        .foregroundColor(C.muted)
-                    if st.updatedAt > 0 {
-                        Text("· \(timeText)")
-                            .font(.system(size: 11))
-                            .foregroundColor(C.faint)
-                    }
+                    smallBtn("蓝牙钥匙") { showBtKeyNote() }
+                    smallBtn("刷新") { refresh() }
                 }
             }
-            Spacer(minLength: 4)
-            Image(carImage)
-                .resizable()
-                .scaledToFit()
-                .frame(height: 74)
-                .shadow(color: C.blue.opacity(0.18), radius: 8, x: 0, y: 6)
+
+            Text(stateLine1)
+                .font(.system(size: 12))
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+                .padding(.top, 6)
+            Text(stateLine2)
+                .font(.system(size: 12))
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+                .padding(.top, 2)
         }
-        .padding(16)
-        .frame(maxWidth: .infinity)
-        .background(
-            LinearGradient(colors: [C.blue.opacity(0.10), C.blue.opacity(0.03)],
-                           startPoint: .topLeading, endPoint: .bottomTrailing)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
-    /// 车型图资源名：命中车型用专属图，否则通用图
-    private var carImage: String {
-        let code = CarModel.normalize(st.seriesName.isEmpty ? st.series : st.seriesName)
-        return code.isEmpty ? "car" : "car_" + code.lowercased()
+    /// 第一行：发动机 + 车锁
+    private var stateLine1: Text {
+        if loading {
+            return Text("状态获取中…").foregroundColor(KH.grey)
+        }
+        let eng = st.engineOn ? "已启动" : "已熄火"
+        let locked = st.lockFL
+        return Text(eng).foregroundColor(KH.grey)
+            + Text(" · ").foregroundColor(KH.grey)
+            + Text(locked ? "已锁车" : "未锁车").foregroundColor(locked ? KH.grey : KH.red)
     }
 
-    private var modelTitle: String {
-        let code = CarModel.normalize(st.seriesName.isEmpty ? st.series : st.seriesName)
-        let n = CarModel.name(code)
-        if !n.isEmpty { return n }
-        if !st.seriesName.isEmpty { return st.seriesName }
-        return st.seriesName
+    /// 第二行：逐项列出未关的车窗 / 天窗 / 后备箱
+    private var stateLine2: Text {
+        if loading { return Text("") }
+        var win = ""
+        if st.winFL { win += "左前窗" }
+        if st.winFR { win += (win.isEmpty ? "" : "、") + "右前窗" }
+        if st.winRL { win += (win.isEmpty ? "" : "、") + "左后窗" }
+        if st.winRR { win += (win.isEmpty ? "" : "、") + "右后窗" }
+
+        var t = win.isEmpty
+            ? Text("车窗已关").foregroundColor(KH.grey)
+            : Text(win + "未关").foregroundColor(KH.red)
+        t = t + Text(" · ").foregroundColor(KH.grey)
+        t = t + Text(st.sunOpen ? "天窗未关" : "天窗已关")
+            .foregroundColor(st.sunOpen ? KH.red : KH.grey)
+        if st.trunk {
+            t = t + Text(" · ").foregroundColor(KH.grey)
+                + Text("后备箱未关").foregroundColor(KH.red)
+        }
+        return t
+    }
+
+    // MARK: 位置卡
+    private var locationCard: some View {
+        Button {
+            sheet = .location
+        } label: {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("车辆位置：\(st.addr.isEmpty ? "暂无位置" : st.addr)")
+                    .font(.system(size: 13))
+                    .foregroundColor(KH.text)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text("更新于 \(timeText)")
+                    .font(.system(size: 10))
+                    .foregroundColor(KH.grey)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.white)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 
     private var timeText: String {
-        let t = st.updatedAt > 1_000_000_000 ? Double(st.updatedAt) / 1000.0 : Double(st.updatedAt)
-        let d = Date(timeIntervalSince1970: t)
+        guard st.updatedAt > 0 else { return "--" }
+        let ms = Double(st.updatedAt)
+        let d = Date(timeIntervalSince1970: ms > 1_000_000_000 ? ms / 1000 : ms)
         let f = DateFormatter()
         f.dateFormat = "MM-dd HH:mm"
         return f.string(from: d)
     }
 
-    private var loginPrompt: some View {
-        Button {
-            showLogin = true
-        } label: {
-            HStack {
-                Image(systemName: "person.crop.circle.badge.exclamationmark")
-                Text("未登录，点此登录长安账号")
-                    .font(.system(size: 14, weight: .medium))
-                Spacer()
-                Image(systemName: "chevron.right").font(.system(size: 12))
-            }
-            .foregroundColor(.white)
-            .padding(.horizontal, 16).padding(.vertical, 14)
-            .background(C.blue)
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    // MARK: 全宽蓝色按钮
+    private var btKeyButton: some View {
+        Button { showBtKeyNote() } label: {
+            Text("蓝牙钥匙绑定（官方钥匙）")
+                .font(.system(size: 14))
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 46)
+                .background(KH.blue)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
+        .buttonStyle(.plain)
+        .padding(.vertical, 2)
     }
 
-    // MARK: 车况
-    private var statusCard: some View {
-        Card {
-            VStack(spacing: 12) {
-                if loading {
-                    ProgressView().padding(.vertical, 20)
-                } else {
-                    // 续航（4.5.6 车况主字段）+ 状态标签
-                    HStack(alignment: .top) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("剩余续航")
-                                .font(.system(size: 11)).foregroundColor(C.faint)
-                            HStack(alignment: .firstTextBaseline, spacing: 3) {
-                                Text(st.range.isEmpty ? "--" : st.range)
-                                    .font(.system(size: 28, weight: .bold))
-                                    .foregroundColor(C.txt)
-                                Text("km").font(.system(size: 12)).foregroundColor(C.muted)
-                            }
-                        }
-                        Spacer()
-                        VStack(alignment: .trailing, spacing: 6) {
-                            Text(st.lockFL ? "已锁车" : "未锁车")
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundColor(st.lockFL ? C.green : C.amber)
-                            if st.sunOpen {
-                                Text("天窗开启").font(.system(size: 11)).foregroundColor(C.amber)
-                            }
-                            if st.engineOn {
-                                Text("发动机运行").font(.system(size: 11)).foregroundColor(C.blue)
-                            }
-                        }
-                    }
-
-                    Divider().opacity(0.5)
-
-                    // 三个指标
-                    HStack(spacing: 0) {
-                        metric("总里程", st.odometer, "km")
-                        Divider().frame(height: 26).opacity(0.5)
-                        metric("电压", st.voltage, "V")
-                        Divider().frame(height: 26).opacity(0.5)
-                        metric("外温", st.outTemp, "°C")
-                    }
-                    // 胎压
-                    HStack(spacing: 8) {
-                        tyre("左前", st.lf)
-                        tyre("右前", st.rf)
-                        tyre("左后", st.lr)
-                        tyre("右后", st.rr)
-                    }
-                }
-            }
-        }
-    }
-
-    private func metric(_ title: String, _ value: String, _ unit: String) -> some View {
-        VStack(spacing: 3) {
-            Text(value.isEmpty ? "--" : value)
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundColor(C.txt)
-            Text(title).font(.system(size: 10)).foregroundColor(C.faint)
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    private func tyre(_ pos: String, _ v: String) -> some View {
-        let n = Double(v) ?? 0
-        let warn = n > 0 && (n < 200 || n > 280)
-        return VStack(spacing: 2) {
-            Text(v.isEmpty ? "--" : v)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(warn ? C.red : C.txt)
-            Text(pos).font(.system(size: 9)).foregroundColor(C.faint)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 7)
-        .background(warn ? C.red.opacity(0.07) : C.bg)
-        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-    }
-
-    // MARK: 门窗
-    private var doorCard: some View {
-        Card {
-            VStack(spacing: 10) {
-                HStack {
-                    Text("门窗")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(C.blue)
-                    Spacer()
-                    if st.anyOpen {
-                        Button {
-                            cmd("CloseWindow", "正在关闭车窗…")
-                        } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: "rectangle.compress.vertical")
-                                    .font(.system(size: 10, weight: .bold))
-                                Text("一键关闭").font(.system(size: 11, weight: .semibold))
-                            }
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 11).padding(.vertical, 5)
-                            .background(C.blue)
-                            .clipShape(Capsule())
-                        }
-                    } else {
-                        HStack(spacing: 4) {
-                            Image(systemName: "checkmark")
-                                .font(.system(size: 10, weight: .bold))
-                            Text("全部关闭").font(.system(size: 10.5))
-                        }
-                        .foregroundColor(C.green)
-                    }
-                }
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
-                    doorCell("主驾", st.doorFL, st.lockFL)
-                    doorCell("副驾", st.doorFR, st.lockFR)
-                    doorCell("左后", st.doorRL, st.lockRL)
-                    doorCell("右后", st.doorRR, st.lockRR)
-                    plainCell("后备箱", st.trunk, "shippingbox")
-                    plainCell("引擎盖", st.hood, "engine.combustion")
-                }
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 2), spacing: 6) {
-                    winCell("主驾窗", st.winFL)
-                    winCell("副驾窗", st.winFR)
-                    winCell("左后窗", st.winRL)
-                    winCell("右后窗", st.winRR)
-                }
-            }
-        }
-    }
-
-    private func doorCell(_ name: String, _ open: Bool, _ locked: Bool) -> some View {
-        VStack(spacing: 5) {
-            Image(systemName: open ? "door.left.hand.open" : "door.left.hand.closed")
-                .font(.system(size: 19))
-                .foregroundColor(open ? C.red : C.blue)
-            HStack(spacing: 3) {
-                Text(name).font(.system(size: 10.5)).foregroundColor(C.muted)
-                Image(systemName: locked ? "lock.fill" : "lock.open.fill")
-                    .font(.system(size: 8))
-                    .foregroundColor(locked ? C.green : C.amber)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 11)
-        .background(open ? C.red.opacity(0.07) : C.bg)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-    }
-
-    private func plainCell(_ name: String, _ open: Bool, _ icon: String) -> some View {
-        VStack(spacing: 5) {
-            Image(systemName: icon)
-                .font(.system(size: 19))
-                .foregroundColor(open ? C.red : C.blue)
-            Text(name).font(.system(size: 10.5)).foregroundColor(C.muted)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 11)
-        .background(open ? C.red.opacity(0.07) : C.bg)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-    }
-
-    private func winCell(_ name: String, _ open: Bool) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: "rectangle.split.2x1")
-                .font(.system(size: 15))
-                .foregroundColor(open ? C.red : C.faint)
-            Text(name).font(.system(size: 10.5)).foregroundColor(C.muted)
-            Spacer()
-            Text(open ? "开" : "关")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(open ? C.red : C.faint)
-        }
-        .padding(.horizontal, 9).padding(.vertical, 8)
-        .background(open ? C.red.opacity(0.06) : C.bg)
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-    }
-
-    // MARK: 快捷行
-    private var quickRow: some View {
+    // MARK: 全景照片 / 行车轨迹
+    private var toolButtons: some View {
         HStack(spacing: 8) {
-            quickBtn("开锁", "lock.open", "UnLockDoor")
-            quickBtn("闭锁", "lock.fill", "LockDoor")
-            quickBtn("闪灯", "lightbulb", "FlashLight")
-            quickBtn("鸣笛", "speaker.wave.2.fill", "Whistle")
+            actionBtn("全景照片") { sheet = .photo }
+            actionBtn("行车轨迹") { sheet = .track }
+        }
+        .padding(.vertical, 2)
+    }
+
+    // MARK: 控车按钮对（源码 7 组）
+    private var controlPairs: some View {
+        VStack(spacing: 8) {
+            pair("启动发动机", "OpenEngine", "关闭发动机", "CloseEngine")
+            pair("解锁", "UnLockDoor", "关锁", "LockDoor")
+            pair("打开车窗", "OpenWindow", "车窗微开", "WindowSlit")
+            pair("关闭车窗", "CloseWindow", "打开天窗", "OpenDormer")
+            pair("天窗翘起", "SkyWindowLiftUp", "关闭天窗", "CloseDormer")
+            pair("鸣笛", "RemoteSearchCar", "闪灯", "FlashLight")
+            pair("闪灯鸣笛", "Whistle", "详情", nil)
         }
     }
 
-    private func quickBtn(_ title: String, _ icon: String, _ cmdName: String) -> some View {
-        Button {
-            cmd(cmdName, "正在\(title)…")
-        } label: {
-            VStack(spacing: 6) {
-                Image(systemName: icon).font(.system(size: 18))
-                Text(title).font(.system(size: 10.5))
+    private func pair(_ l1: String, _ c1: String, _ l2: String, _ c2: String?) -> some View {
+        HStack(spacing: 8) {
+            ctrlBtn(l1) { runCmd(c1, l1) }
+            if let c2 = c2 {
+                ctrlBtn(l2) { runCmd(c2, l2) }
+            } else {
+                ctrlBtn(l2) { sheet = .history }
             }
-            .foregroundColor(C.blue)
+        }
+    }
+
+    private var footer: some View {
+        Text("长安开放平台接口 · 指令未完成时其它指令会被拒绝")
+            .font(.system(size: 10))
+            .foregroundColor(KH.grey)
+            .multilineTextAlignment(.center)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
-            .background(C.card)
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(C.border, lineWidth: 1))
-        }
+            .padding(.top, 10)
+            .padding(.bottom, 6)
     }
 
-    // MARK: 控车九宫格
-    private var controlGrid: some View {
-        Card {
-            VStack(spacing: 10) {
-                HStack {
-                    Text("车辆控制")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(C.blue)
-                    Spacer()
-                    Text("按住确认后下发")
-                        .font(.system(size: 10)).foregroundColor(C.faint)
-                }
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 12) {
-                    ctl("启动", "power", "OpenEngine")
-                    ctl("熄火", "power.circle", "CloseEngine")
-                    ctl("开空调", "snowflake", "openAir")
-                    ctl("关空调", "wind", "closeAir")
-                    ctl("开窗", "arrow.down.square", "OpenWindow")
-                    ctl("车窗留缝", "rectangle.split.3x1", "WindowSlit")
-                    ctl("关窗", "arrow.up.square", "CloseWindow")
-                    ctl("开天窗", "sun.max", "OpenDormer")
-                    ctl("天窗翘起", "sun.max.fill", "SkyWindowLiftUp")
-                    ctl("关天窗", "sun.min", "CloseDormer")
-                    ctl("闪灯", "lightbulb", "FlashLight")
-                    ctl("鸣笛寻车", "speaker.wave.2.fill", "RemoteSearchCar")
-                }
-            }
+    // MARK: 按钮样式（照源码 dp 值：小按钮 56×32 圆角 8，动作按钮高 46 圆角 10，控车按钮高 52 圆角 10）
+    private func smallBtn(_ title: String, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 12))
+                .foregroundColor(.white)
+                .frame(width: 56, height: 32)
+                .background(KH.blue)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
+        .buttonStyle(.plain)
     }
 
-    private func ctl(_ title: String, _ icon: String, _ cmdName: String) -> some View {
-        Button {
-            cmd(cmdName, "正在\(title)…")
-        } label: {
-            VStack(spacing: 7) {
-                Image(systemName: icon)
-                    .font(.system(size: 20, weight: .light))
-                Text(title).font(.system(size: 10.5))
-            }
-            .foregroundColor(C.blue)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .background(C.bg)
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    private func actionBtn(_ title: String, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 14))
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 46)
+                .background(KH.blue)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
+        .buttonStyle(.plain)
     }
 
-    // MARK: 动作
+    private func ctrlBtn(_ title: String, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 14))
+                .foregroundColor(KH.text)
+                .frame(maxWidth: .infinity)
+                .frame(height: 52)
+                .background(Color.white)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - 动作
+
     private func refresh() {
         loading = true
         api.carData { d in
@@ -513,44 +309,67 @@ struct CarHomeView: View {
         }
     }
 
-    private func cmdLabel(_ c: String) -> String {
-        let map: [String: String] = [
-            "LockDoor": "锁车", "UnLockDoor": "解锁",
-            "OpenWindow": "开窗", "CloseWindow": "关窗",
-            "VentWindow": "留缝", "OpenSunroof": "开天窗",
-            "CloseSunroof": "关天窗", "OpenEngine": "启动",
-            "CloseEngine": "熄火", "openair": "开空调", "closeair": "关空调",
-            "FlashLight": "闪灯", "Whistle": "鸣笛",
-            "RemoteSearchCar": "寻车"
-        ]
-        return map[c] ?? c
-    }
-
-    private func cmd(_ name: String, _ hint: String) {
-        // 没有控车码先拦下来，直接引导设置
-        if CarAPI.shared.controlPin.isEmpty {
-            resultTitle = "缺少控车码"
-            resultMsg = "控车指令要用控车码做 RSA 加密。\n请先到长安 App 确认 6 位安全码，再点右上角「设置控车码」。"
-            showResult = true
+    private func runCmd(_ cmd: String, _ title: String) {
+        guard !CarAPI.shared.controlPin.isEmpty else {
+            alertMsg = "控车指令要用控车码做 RSA 加密。\n请先在长安 App 确认 6 位安全码，再点右上角「设置控车码」。"
             return
         }
-        toast = hint
-        api.control(cmd: name) { ok, msg in
-            OpLogStore.append(OpLog(cmd: cmdLabel(name), ok: ok, msg: msg, time: Date()))
+        toast = "正在\(title)…"
+        api.control(cmd: cmd) { ok, msg in
             DispatchQueue.main.async {
                 toast = nil
-                resultTitle = ok ? "已下发" : "下发失败"
-                resultMsg = msg.isEmpty ? (ok ? "指令已发出，稍等几秒刷新看状态" : "未知错误") : msg
-                showResult = true
-                if ok {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { refresh() }
+                alertMsg = ok ? "已下发：\(title)\n稍等几秒刷新状态" : "\(title)失败：\(msg)"
+                if ok { DispatchQueue.main.asyncAfter(deadline: .now() + 2) { refresh() } }
+            }
+        }
+    }
+
+    private func showBtKeyNote() {
+        alertMsg = "蓝牙钥匙走 BLE 直连车端（Android 端 BleKeyClient 协议），iOS 版未移植。\n联网控车不受影响。"
+    }
+
+    private var pinSheet: some View {
+        NavigationView {
+            Form {
+                Section(header: Text("控车码（长安 App 里的 6 位安全码）")) {
+                    TextField("6 位数字", text: $pinInput)
+                        .keyboardType(.numberPad)
+                }
+                Section {
+                    Button("保存") {
+                        CarAPI.shared.controlPin = pinInput
+                        AppGroupStore.syncCredentials()
+                        showPinSheet = false
+                        toast = "控车码已保存"
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { toast = nil }
+                    }
+                }
+            }
+            .navigationTitle("设置控车码")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { showPinSheet = false }
                 }
             }
         }
     }
+
+    private func logout() {
+        CarAPI.shared.logout()
+        st = CarState()
+        toast = "已退出登录"
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { showLogin = true }
+    }
+}
+
+enum HomeSheet: String, Identifiable {
+    case location, track, photo, more, history
+    var id: String { rawValue }
 }
 
 // MARK: - 车况数据模型
+
 struct CarState {
     var carName = ""
     var online = false
@@ -577,7 +396,7 @@ struct CarState {
 
     init() {}
 
-    /// 新协议：CarAPI.carData 把缓存拼成扁平字典
+    /// CarAPI.carData 把缓存拼成扁平字典
     init(_ d: [String: Any]) {
         func str(_ k: String) -> String {
             if let v = d[k] as? String { return v }
@@ -605,8 +424,12 @@ struct CarState {
         let locked = flag("locked")
         lockFL = locked; lockFR = locked; lockRL = locked; lockRR = locked
 
-        let win = flag("winOpen")
-        winFL = win; winFR = win; winRL = win; winRR = win
+        winFL = flag("winFL")
+        winFR = flag("winFR")
+        winRL = flag("winRL")
+        winRR = flag("winRR")
+        if !winFL && !winFR && !winRL && !winRR { winFL = flag("winOpen") }
+
         sunOpen = flag("sunOpen")
         trunk = flag("trunk")
         engineOn = flag("engineOn")

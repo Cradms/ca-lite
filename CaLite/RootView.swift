@@ -1,5 +1,6 @@
 import SwiftUI
 
+/// 底部只留三个入口，轨迹 / 记录 / 全景照片从首页进入（与源码单一首页 + 二级页一致）
 struct RootView: View {
     @State private var tab = 0
 
@@ -14,21 +15,11 @@ struct RootView: View {
                 .tabItem { Label("位置", systemImage: "map.fill") }
                 .tag(1)
 
-            NavigationView { TrackView() }
-                .navigationViewStyle(.stack)
-                .tabItem { Label("轨迹", systemImage: "point.topleft.down.to.point.bottomright.curvepath") }
-                .tag(2)
-
-            NavigationView { HistoryView() }
-                .navigationViewStyle(.stack)
-                .tabItem { Label("记录", systemImage: "clock.arrow.circlepath") }
-                .tag(3)
-
             NavigationView { MoreView() }
                 .navigationViewStyle(.stack)
                 .tabItem { Label("我的", systemImage: "person.crop.circle.fill") }
-                .tag(4)
+                .tag(2)
         }
-        .tint(C.blue)
+        .tint(KH.blue)
     }
 }
