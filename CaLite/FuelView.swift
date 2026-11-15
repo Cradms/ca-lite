@@ -96,7 +96,7 @@ struct FuelView: View {
                                 }
                             }
                         }
-                        if let l = FuelStore.latestPer100 {
+                        if FuelStore.latestPer100 != nil {
                             HStack(spacing: 6) {
                                 Image(systemName: "info.circle")
                                     .font(.system(size: 10)).foregroundColor(C.faint)

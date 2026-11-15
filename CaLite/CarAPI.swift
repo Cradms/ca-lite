@@ -186,7 +186,7 @@ final class CarAPI {
 
     // MARK: - 摘要 / 签名
 
-    private func hex(_ d: Digest) -> String {
+    private func hex<D: Digest>(_ d: D) -> String {
         d.map { String(format: "%02x", $0) }.joined()
     }
 
