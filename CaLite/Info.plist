@@ -71,6 +71,10 @@
 	<key>NSMicrophoneUsageDescription</key>
 	<string>用于语音输入</string>
 
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>用于连接车辆蓝牙钥匙，扫描并诊断周边 BLE 设备</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>用于连接车辆蓝牙钥匙</string>
 	<!-- 允许打开高德等外部 App -->
 	<key>LSApplicationQueriesSchemes</key>
 	<array>

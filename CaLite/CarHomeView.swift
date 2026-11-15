@@ -96,6 +96,7 @@ struct CarHomeView: View {
             case .photo:    NavigationView { PhotoView() }
             case .more:     NavigationView { MoreView() }
             case .history:  NavigationView { HistoryView() }
+            case .ble:      NavigationView { BleKeyView() }
             }
         }
         .alert(isPresented: Binding(get: { alertMsg != nil },
@@ -364,6 +365,7 @@ struct CarHomeView: View {
                     toolBtn("全景照片", "photo.on.rectangle") { sheet = .photo }
                     toolBtn("行车轨迹", "point.topleft.down.to.point.bottomright.curvepath") { sheet = .track }
                     toolBtn("操作记录", "clock.arrow.circlepath") { sheet = .history }
+                    toolBtn("蓝牙钥匙", "key.fill") { sheet = .ble }
                 }
 
                 // 空调温度（源码 setTemperature：16–32）
@@ -591,7 +593,7 @@ struct CarHomeView: View {
 }
 
 enum HomeSheet: String, Identifiable {
-    case location, track, photo, more, history
+    case location, track, photo, more, history, ble
     var id: String { rawValue }
 }
 
