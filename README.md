@@ -62,6 +62,17 @@ zip -qry CaLite-unsigned.ipa Payload
 
 再自签（AltStore / Sideloadly / 自签证书）安装。
 
+### 云端编译（GitHub Actions 不可用时用 Codemagic）
+
+仓库带 `codemagic.yaml`，两条工作流：
+
+- `ca-lite-unsigned`：push main 自动编译，产出 `CaLite-unsigned.ipa`
+- `ca-lite-signed`：先在 Codemagic → Code signing identities 上传 p12 与 profile，再跑这条出已签名 IPA
+
+在 Codemagic 里 Add application → 选 GitHub 仓库 → 它会自动读到这两条工作流。
+
+> 注：本账号的 GitHub Actions runner 目前起不来（push 后立即 cancelled），所以 CI 出包走 Codemagic 或本地 Xcode。
+
 ## 接口说明
 
 | 通道 | 域名 | 用途 |
