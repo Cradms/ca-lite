@@ -351,6 +351,31 @@ struct CarHomeView: View {
         .buttonStyle(.plain)
     }
 
+    // MARK: - 位置条
+
+    private var locationBar: some View {
+        Button { sheet = .location } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "location.fill")
+                    .font(.system(size: 12))
+                    .foregroundColor(KH.blue)
+                Text(st.addr.isEmpty ? "车辆位置：暂无位置（点此刷新）" : "车辆位置：\(st.addr)")
+                    .font(.system(size: 12.5))
+                    .foregroundColor(Color(hex: 0x2B3A4F))
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11))
+                    .foregroundColor(Color(hex: 0xA9B3BE))
+            }
+            .padding(.horizontal, 14)
+            .frame(height: 44)
+            .background(Color.white.opacity(0.9))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
     // MARK: - 工具与空调
 
     private var allControls: some View {
