@@ -22,6 +22,7 @@ enum Shared {
     static var voltage: String { str("w_voltage") }
     static var carName: String { str("w_car") }
     static var online: Bool { str("w_online") == "1" || defaults.integer(forKey: "w_logged") == 1 }
+    static var logged: Bool { defaults.integer(forKey: "w_logged") == 1 }
     static var anyOpen: Bool {
         defaults.integer(forKey: "w_win") == 1 || defaults.integer(forKey: "w_sun") == 1
     }
