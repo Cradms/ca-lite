@@ -331,6 +331,9 @@ struct BleKeyView: View {
     @StateObject private var ble = BleManager()
     @State private var hexInput = "0102"
     @State private var showUUIDSheet = false
+    @State private var searchText = ""
+    @State private var onlyStrong = true
+    @State private var hideKnown = true
 
     var body: some View {
         List {
@@ -355,13 +358,13 @@ struct BleKeyView: View {
 
             if !ble.devices.isEmpty {
                 Section {
-                    ForEach(ble.devices) { d in
+                    ForEach(filteredDevices) { d in
                         Button {
                             ble.connect(d)
                         } label: {
                             VStack(alignment: .leading, spacing: 3) {
                                 HStack {
-                                    Text(d.name)
+                                    Text(d.name.isEmpty || d.name == "未命名" ? "未命名设备（可能就是车）" : d.name)
                                         .font(.system(size: 13.5, weight: .medium))
                                         .foregroundColor(C.txt)
                                     Spacer()
@@ -376,8 +379,32 @@ struct BleKeyView: View {
                             }
                         }
                     }
+                    if ble.devices.isEmpty {
+                        Text("没有扫到设备，点上面「扫描周边设备」")
+                            .font(.system(size: 12)).foregroundColor(C.faint)
+                    } else if filteredDevices.isEmpty {
+                        Text("过滤后为空，关掉下面的开关看看")
+                            .font(.system(size: 12)).foregroundColor(C.faint)
+                    }
                 } header: {
-                    Text("周边设备（\(ble.devices.count)）")
+                    HStack {
+                        Text("设备（\(filteredDevices.count)/\(ble.devices.count)）")
+                        Spacer()
+                        Toggle("只看强信号", isOn: $onlyStrong)
+                            .labelsHidden()
+                            .scaleEffect(0.75)
+                    }
+                } footer: {
+                    VStack(alignment: .leading, spacing: 8) {
+                        TextField("按名称搜索（车端常见为乱码或 VIN 后几位）", text: $searchText)
+                            .font(.system(size: 12))
+                            .textFieldStyle(.roundedBorder)
+                            .autocapitalization(.none)
+                            .disableAutocorrection(true)
+                        Toggle("隐藏耳机 / 音箱 / 手环等已知设备", isOn: $hideKnown)
+                            .font(.system(size: 11))
+                    }
+                    .padding(.top, 4)
                 }
             }
 
@@ -443,6 +470,29 @@ struct BleKeyView: View {
         .navigationTitle("蓝牙钥匙 / BLE 调试")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showUUIDSheet) { uuidSheet }
+    }
+
+    /// 过滤后的设备列表：去噪（耳机/音箱/手环）+ 只看强信号 + 关键字
+    private var filteredDevices: [BleManager.Device] {
+        ble.devices.filter { d in
+            if onlyStrong && d.rssi < -75 { return false }
+            if hideKnown && Self.isKnownDevice(d.name) { return false }
+            if !searchText.isEmpty {
+                let k = searchText.lowercased()
+                if !d.name.lowercased().contains(k) { return false }
+            }
+            return true
+        }
+    }
+
+    /// 常见消费电子，车端不会叫这些名字
+    private static func isKnownDevice(_ name: String) -> Bool {
+        let n = name.lowercased()
+        let keys = ["airpods", "buds", "speaker", "sound", "band", "watch",
+                    "headphone", "earphone", "mi smart", "redmi", "huawei",
+                    "jbl", "bose", "sony", "marshall", "keyboard", "mouse",
+                    "tv", "soundbar", "tws", "耳", "手环", "音箱", "手表"]
+        return keys.contains { n.contains($0) }
     }
 
     private func cmdBtn(_ item: BleCmdItem) -> some View {
