@@ -97,6 +97,21 @@ struct MoreView: View {
                     }
                 }
 
+                // 车务（油耗 / 保养 / 轨迹 / 照片）
+                Card {
+                    VStack(spacing: 0) {
+                        navRow("油耗记录", "fuelpump.fill") { FuelView() }
+                        rowDivider
+                        navRow("保养与自检", "wrench.and.screwdriver.fill") { MaintainView() }
+                        rowDivider
+                        navRow("今日行车轨迹", "point.topleft.down.to.point.bottomright.curvepath") { TrackView() }
+                        rowDivider
+                        navRow("全景照片", "photo.on.rectangle") { PhotoView() }
+                        rowDivider
+                        navRow("蓝牙钥匙 / BLE 调试", "key.fill") { BleKeyView() }
+                    }
+                }
+
                 // 操作历史
                 Card {
                     VStack(alignment: .leading, spacing: 10) {
@@ -228,6 +243,35 @@ struct MoreView: View {
         .padding(22)
         .background(C.bg.ignoresSafeArea())
         .presentationDetents([.height(260)])
+    }
+
+    private func navRow<D: View>(_ title: String, _ icon: String,
+                                 @ViewBuilder dest: @escaping () -> D) -> some View {
+        NavigationLink(destination: dest()) {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.system(size: 14))
+                    .foregroundColor(C.blue)
+                    .frame(width: 22)
+                Text(title)
+                    .font(.system(size: 13.5))
+                    .foregroundColor(C.txt)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11))
+                    .foregroundColor(C.faint)
+            }
+            .frame(height: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var rowDivider: some View {
+        Rectangle()
+            .fill(C.border.opacity(0.6))
+            .frame(height: 1)
+            .padding(.leading, 32)
     }
 
     private var maskedPhone: String {
