@@ -743,7 +743,9 @@ final class CarAPI {
         Prefs.setb(!anyUnlock, "c_locked")
 
         // 车窗
-        let wFl = flag(["diverWindow"]), wFr = flag(["passengerWindow"])
+        // 车窗字段各版本不一致：car-ios 用 leftFrontDoorrWindow（双 r），源码 Api 用 diverWindow
+        let wFl = flag(["leftFrontDoorrWindow", "diverWindow", "leftFrontWindow", "driverWindow"])
+        let wFr = flag(["rightFrontDoorrWindow", "passengerWindow", "rightFrontDoorWindow"])
         let wRl = flag(["leftRearWindow"]), wRr = flag(["rightRearWindow"])
         let anyWin = wFl == 1 || wFr == 1 || wRl == 1 || wRr == 1
         if wFl >= 0 || wFr >= 0 || wRl >= 0 || wRr >= 0 {
@@ -788,6 +790,9 @@ final class CarAPI {
         }
 
         // 车机上报时间（不是本机刷新时间）
+        if let tt = d["terminalTime"] as? String, !tt.isEmpty {
+            Prefs.set(tt, "c_traw")          // 原始值，界面上显示出来便于核对
+        }
         if let vt = Self.vehicleTime(d) {
             Prefs.setl(Int64(vt.timeIntervalSince1970), "c_vtime")
         }
@@ -1253,6 +1258,91 @@ final class CarAPI {
             if err == nil { _ = self.fetchStatus() }
             DispatchQueue.main.async { done(err == nil, err ?? "温度已设为 \(v)°C") }
         }
+    }
+
+    /// 接口返回的多为相对路径，按源码 loadDataWithBaseURL 的做法补成绝对地址
+    static func absoluteUrl(_ path: String) -> String {
+        let p = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        if p.isEmpty { return "" }
+        if p.hasPrefix("http://") || p.hasPrefix("https://") { return p }
+        if p.hasPrefix("//") { return "https:" + p }
+        if p.hasPrefix("/") { return MI_HOST + p }
+        return MI_HOST + "/" + p
+    }
+
+    /// 从车况里取「车机上报时间」
+    ///
+    /// 只认白名单字段，且必须落在合理区间（2015-01-01 ~ 现在+30 天），
+    /// 否则 drivingTime（行驶秒数）之类的数字会被误当成 1970 年的时间戳。
+    static func vehicleTime(_ d: [String: Any]) -> Date? {
+        let keys = ["terminalTime", "lastUpdateTime", "updateTime", "reportTime",
+                    "gpsTime", "collectTime", "dataTime", "carTime", "positionTime",
+                    "sampleTime", "uploadTime", "refreshTime", "lastReportTime",
+                    "terminalTimestamp", "updateTimestamp"]
+        for k in keys {
+            if let t = parseAnyTime(d[k]) { return t }
+        }
+        return nil
+    }
+
+    /// 时间合法性：2015-01-01 之后，且不超过现在 30 天
+    static func plausible(_ d: Date) -> Bool {
+        let t = d.timeIntervalSince1970
+        let lower = 1_420_070_400.0            // 2015-01-01
+        let upper = Date().timeIntervalSince1970 + 30 * 86400
+        return t >= lower && t <= upper
+    }
+
+    /// 支持 "yyyy-MM-dd HH:mm:ss" / ISO / 秒毫秒时间戳 / yyyyMMddHHmmss(14位)
+    ///
+    /// 注意：14 位纯数字（20261116152033）必须先按日期格式解析，
+    /// 否则会被当成时间戳（除以 1000 后落到 2612 年）。解析结果统一过 plausible()。
+    static func parseAnyTime(_ v: Any?) -> Date? {
+        func check(_ d: Date?) -> Date? {
+            guard let d = d, plausible(d) else { return nil }
+            return d
+        }
+        func stamp(_ n: Double) -> Date? {
+            check(Date(timeIntervalSince1970: n > 1e12 ? n / 1000 : n))
+        }
+        func fmt(_ text: String) -> Date? {
+            var t = text.replacingOccurrences(of: "T", with: " ")
+            t = t.replacingOccurrences(of: "/", with: "-")
+            if let dot = t.firstIndex(of: "."), t.count > 19 {
+                t = String(t[t.startIndex..<dot])
+            }
+            for f in ["yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm",
+                      "yyyyMMddHHmmss", "yyyyMMddHHmm", "yyyyMMdd"] {
+                let df = DateFormatter()
+                df.locale = Locale(identifier: "en_US_POSIX")
+                df.timeZone = TimeZone.current
+                df.dateFormat = f
+                if let dt = df.date(from: t) { return check(dt) }
+            }
+            return nil
+        }
+
+        if let n = v as? Double { return stamp(n) }
+        if let n = v as? Int { return stamp(Double(n)) }
+        guard let raw = v as? String else { return nil }
+        let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.isEmpty { return nil }
+
+        // 纯数字：按长度判断是时间戳还是紧凑日期
+        if text.allSatisfy({ $0.isNumber }) {
+            switch text.count {
+            case 14, 12, 8:
+                if let d = fmt(text) { return d }
+                return nil
+            case 10, 13, 16:
+                if let n = Double(text) { return stamp(n) }
+                return nil
+            default:
+                if let n = Double(text) { return stamp(n) }
+                return nil
+            }
+        }
+        return fmt(text)
     }
 
     /// 接口返回的多为相对路径，按源码 loadDataWithBaseURL 的做法补成绝对地址

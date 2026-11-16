@@ -280,6 +280,12 @@ struct CarStatusView: View {
             Text(timeText)
                 .font(.system(size: 13, weight: .medium))
                 .foregroundColor(Color(hex: 0x2B3A4F))
+            let raw = Prefs.s("c_traw")
+            if !raw.isEmpty {
+                Text("terminalTime = \(raw)")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundColor(Color(hex: 0x8A94A3))
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
