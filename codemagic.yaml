@@ -25,7 +25,8 @@ workflows:
 
       - name: 编译（不签名）
         script: |
-          set -eo pipefail
+          set +e
+          set -o pipefail
           xcodebuild \
             -project CaLite.xcodeproj \
             -scheme CaLite \
@@ -35,9 +36,14 @@ workflows:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            build 2>&1 | tee /tmp/build.log | tail -60
-          echo "---- 产物扫描 ----"
-          find build -name "*.app" -maxdepth 5 -print
+            build 2>&1 | tee /tmp/build.log | tail -40
+          rc=$?
+          echo ""
+          echo "================ 编译错误汇总 ================"
+          grep -n "error:" /tmp/build.log | head -40
+          echo "=============================================="
+          echo "退出码: $rc"
+          exit $rc
 
       - name: 打包 IPA
         script: |
