@@ -224,12 +224,7 @@ struct CarHomeView: View {
 
     private var timeText: String {
         let stamp = st.vehicleTime > 0 ? st.vehicleTime : st.updatedAt
-        guard stamp > 0 else { return "--" }
-        let ms = Double(stamp)
-        let d = Date(timeIntervalSince1970: ms > 1_000_000_000 ? ms / 1000 : ms)
-        let f = DateFormatter()
-        f.dateFormat = "MM.dd HH:mm"
-        return f.string(from: d)
+        return Stamp.text(Double(stamp), format: "MM.dd HH:mm")
     }
 
     private var timeLabel: String {
@@ -605,6 +600,29 @@ struct CarHomeView: View {
         st = CarState()
         toast = "已退出登录"
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { showLogin = true }
+    }
+}
+
+/// 时间戳转 Date：兼容秒级（1.7e9）与毫秒级（1.7e12）
+/// 分界必须用 1e11 —— 用 1e9 会把秒级时间戳误当成毫秒，除以 1000 后变成 1970
+enum Stamp {
+    static func date(_ v: Double) -> Date {
+        if v <= 0 { return Date(timeIntervalSince1970: 0) }
+        if v > 1e11 { return Date(timeIntervalSince1970: v / 1000) }   // 毫秒
+        return Date(timeIntervalSince1970: v)                          // 秒
+    }
+
+    static func text(_ v: Double, format: String) -> String {
+        if v <= 0 { return "--" }
+        let f = DateFormatter()
+        f.dateFormat = format
+        return f.string(from: date(v))
+    }
+
+    static func isValid(_ v: Double) -> Bool {
+        guard v > 0 else { return false }
+        let t = date(v).timeIntervalSince1970
+        return t >= 1_420_070_400 && t <= Date().timeIntervalSince1970 + 30 * 86400
     }
 }
 

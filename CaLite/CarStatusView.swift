@@ -295,12 +295,7 @@ struct CarStatusView: View {
 
     private var timeText: String {
         let stamp = st.vehicleTime > 0 ? st.vehicleTime : st.updatedAt
-        guard stamp > 0 else { return "--" }
-        let ms = Double(stamp)
-        let d = Date(timeIntervalSince1970: ms > 1_000_000_000 ? ms / 1000 : ms)
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd HH:mm:ss"
-        return f.string(from: d)
+        return Stamp.text(Double(stamp), format: "yyyy-MM-dd HH:mm:ss")
     }
 
     // MARK: 原始车况（调试）
