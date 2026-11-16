@@ -1185,11 +1185,19 @@ final class CarAPI {
                 }
             }
             let out = arr.map { p -> [String: Any] in
-                var thumb = (p["thumbnail"] as? String) ?? ""
-                if thumb.isEmpty { thumb = (p["url"] as? String) ?? "" }
-                return ["thumb": thumb,
-                        "url": (p["url"] as? String) ?? "",
-                        "time": (p["time"] as? String) ?? "",
+                // 源码 PhotoActivity：thumb → thumbnail → filePath → path，url 为空时用 thumb
+                var thumb = (p["thumb"] as? String) ?? ""
+                if thumb.isEmpty { thumb = (p["thumbnail"] as? String) ?? "" }
+                if thumb.isEmpty { thumb = (p["filePath"] as? String) ?? "" }
+                if thumb.isEmpty { thumb = (p["path"] as? String) ?? "" }
+                var full = (p["url"] as? String) ?? ""
+                if full.isEmpty { full = thumb }
+                if thumb.isEmpty { thumb = full }
+                var time = (p["time"] as? String) ?? ""
+                time = time.replacingOccurrences(of: ".0", with: "")
+                return ["thumb": Self.absoluteUrl(thumb),
+                        "url": Self.absoluteUrl(full),
+                        "time": time,
                         "name": (p["name"] as? String) ?? ""]
             }
             DispatchQueue.main.async { done(out) }
@@ -1238,6 +1246,16 @@ final class CarAPI {
             if err == nil { _ = self.fetchStatus() }
             DispatchQueue.main.async { done(err == nil, err ?? "温度已设为 \(v)°C") }
         }
+    }
+
+    /// 接口返回的多为相对路径，按源码 loadDataWithBaseURL 的做法补成绝对地址
+    static func absoluteUrl(_ path: String) -> String {
+        let p = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        if p.isEmpty { return "" }
+        if p.hasPrefix("http://") || p.hasPrefix("https://") { return p }
+        if p.hasPrefix("//") { return "https:" + p }
+        if p.hasPrefix("/") { return MI_HOST + p }
+        return MI_HOST + "/" + p
     }
 
     /// 从车况里取「车机上报时间」

@@ -288,7 +288,9 @@ struct PhotoView: View {
                             let full = (it["url"] as? String) ?? thumb
                             Button {
                                 if let u = URL(string: full) {
-                                    preview = PhotoItem(url: u, time: (it["time"] as? String) ?? "")
+                                    preview = PhotoItem(url: u,
+                                                        thumb: URL(string: thumb),
+                                                        time: (it["time"] as? String) ?? "")
                                 }
                             } label: {
                                 VStack(alignment: .leading, spacing: 4) {
@@ -396,44 +398,23 @@ struct PhotoView: View {
 
 struct PhotoItem: Identifiable {
     let url: URL
+    let thumb: URL?
     let time: String
     var id: String { url.absoluteString }
 }
 
-/// 全屏预览：顶部有明确关闭按钮，图片加载失败可重试
+/// 全屏预览：顶部有关闭按钮；原图失败自动回落缩略图（与源码 WebView 的 onerror 一致）
 struct PhotoPreview: View {
     let item: PhotoItem
     @Environment(\.dismiss) private var dismiss
-    @State private var retry = 0
     @State private var saved = false
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            AsyncImage(url: item.url) { phase in
-                switch phase {
-                case .success(let img):
-                    img.resizable().scaledToFit()
-                case .failure:
-                    VStack(spacing: 12) {
-                        Image(systemName: "exclamationmark.triangle")
-                            .font(.system(size: 30)).foregroundColor(.gray)
-                        Text("图片加载失败")
-                            .font(.system(size: 13)).foregroundColor(.gray)
-                        Button("重试") { retry += 1 }
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 18).padding(.vertical, 8)
-                            .background(Color.white.opacity(0.18))
-                            .clipShape(Capsule())
-                    }
-                default:
-                    ProgressView().tint(.white)
-                }
-            }
-            .id(retry)
-            .padding(.vertical, 60)
+            RemoteImage(primary: item.url, fallback: item.thumb)
+                .padding(.vertical, 60)
 
             VStack {
                 HStack {
@@ -464,16 +445,91 @@ struct PhotoPreview: View {
                 Spacer()
             }
         }
-        .statusBarHidden(false)
     }
 
     private func saveImage() {
         URLSession.shared.dataTask(with: item.url) { data, _, _ in
-            guard let data = data, let img = UIImage(data: data) else { return }
-            DispatchQueue.main.async {
-                UIImageWriteToSavedPhotosAlbum(img, nil, nil, nil)
-                saved = true
+            if let data = data, let img = UIImage(data: data) {
+                DispatchQueue.main.async {
+                    UIImageWriteToSavedPhotosAlbum(img, nil, nil, nil)
+                    saved = true
+                }
+                return
             }
+            // 原图失败就用缩略图
+            guard let t = item.thumb else { return }
+            URLSession.shared.dataTask(with: t) { d2, _, _ in
+                guard let d2 = d2, let img2 = UIImage(data: d2) else { return }
+                DispatchQueue.main.async {
+                    UIImageWriteToSavedPhotosAlbum(img2, nil, nil, nil)
+                    saved = true
+                }
+            }.resume()
         }.resume()
+    }
+}
+
+/// 先原图、失败回落缩略图；都失败才报错，可重试
+struct RemoteImage: View {
+    let primary: URL?
+    let fallback: URL?
+
+    @State private var image: UIImage?
+    @State private var failed = false
+    @State private var attempt = 0
+
+    var body: some View {
+        Group {
+            if let img = image {
+                Image(uiImage: img)
+                    .resizable()
+                    .scaledToFit()
+            } else if failed {
+                VStack(spacing: 12) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.system(size: 30)).foregroundColor(.gray)
+                    Text("图片加载失败")
+                        .font(.system(size: 13)).foregroundColor(.gray)
+                    Button("重试") {
+                        failed = false
+                        attempt += 1
+                    }
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 18).padding(.vertical, 8)
+                    .background(Color.white.opacity(0.18))
+                    .clipShape(Capsule())
+                }
+            } else {
+                ProgressView().tint(.white)
+            }
+        }
+        .task(id: attempt) { await load() }
+    }
+
+    private func load() async {
+        if let d = await fetch(primary), let img = UIImage(data: d) {
+            await MainActor.run { image = img }
+            return
+        }
+        if let f = fallback, let d = await fetch(f), let img = UIImage(data: d) {
+            await MainActor.run { image = img }
+            return
+        }
+        await MainActor.run { failed = true }
+    }
+
+    private func fetch(_ u: URL?) async -> Data? {
+        guard let u = u else { return nil }
+        var req = URLRequest(url: u)
+        req.timeoutInterval = 20
+        req.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X)", forHTTPHeaderField: "User-Agent")
+        do {
+            let (d, resp) = try await URLSession.shared.data(for: req)
+            if let code = (resp as? HTTPURLResponse)?.statusCode, code >= 400 { return nil }
+            return d
+        } catch {
+            return nil
+        }
     }
 }
