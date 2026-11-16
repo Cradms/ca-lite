@@ -87,6 +87,26 @@ workflows:
           xcodegen generate
           grep -n "PRODUCT_BUNDLE_IDENTIFIER" project.yml
 
+      - name: 检查签名材料
+        script: |
+          echo "======== 证书与描述文件检查 ========"
+          echo "-- p12 --"
+          ls -la ~/Library/Developer/Xcode/UserData/Certificates/ 2>&1 || true
+          ls -la ~/Library/MobileDevice/Certificates/ 2>&1 || true
+          echo "-- profiles --"
+          ls -la ~/Library/MobileDevice/Provisioning\ Profiles/ 2>&1 || true
+          P12N=$(ls ~/Library/Developer/Xcode/UserData/Certificates/*.p12 2>/dev/null | wc -l)
+          PRON=$(ls ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision 2>/dev/null | wc -l)
+          echo "统计: p12=$P12N 个, profile=$PRON 个"
+          if [ "$P12N" -eq 0 ]; then
+            echo "!! 没有 p12：去 Codemagic 项目 → Code signing identities 上传 .p12"
+            exit 1
+          fi
+          if [ "$PRON" -lt 2 ]; then
+            echo "!! profile 少于 2 个：com.yg.calite 和 com.yg.calite.widget 各要一个"
+          fi
+          echo "===================================="
+
       - name: 导入证书与描述文件
         script: |
           set -eo pipefail
