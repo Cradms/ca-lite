@@ -199,12 +199,24 @@ struct Provider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<Entry>) -> Void) {
-        // 先自己拉一次车况，再出 Entry；网络失败也用缓存出
-        WidgetAPI.refresh {
+        // 网络请求 + 超时保护：扩展生命周期短，refresh 万一不回调也要出 Entry，
+        // 否则小组件会一直停在加载态（这就是「小组件空白/转圈」的常见原因）
+        var done = false
+        let lock = NSLock()
+
+        func complete() {
+            lock.lock()
+            if done { lock.unlock(); return }
+            done = true
+            lock.unlock()
+
             let e = self.current()
             let next = Calendar.current.date(byAdding: .minute, value: 15, to: Date()) ?? Date()
             completion(Timeline(entries: [e], policy: .after(next)))
         }
+
+        DispatchQueue.global().asyncAfter(deadline: .now() + 6) { complete() }
+        WidgetAPI.refresh { complete() }
     }
 
     private var sample: Entry {
