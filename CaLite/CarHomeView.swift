@@ -283,136 +283,110 @@ struct CarHomeView: View {
 
     // MARK: - 六宫格
 
+    // MARK: - 全部控车按钮（一行三个，全部平铺）
+
     private var gridCard: some View {
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3),
                   spacing: 10) {
-            tile("解锁", "lock.open", "UnLockDoor")
-            tile("车窗留缝", "rectangle.split.3x1", "WindowSlit")
-            tile("天窗翘起", "sun.max", "SkyWindowLiftUp")
-            tile("启动发动机", "engine.combustion", "OpenEngine")
-            tile("打开空调", "snowflake", "openAir")
+            lockTile
+            tile("开窗", "arrow.down.square", "OpenWindow")
+            tile("关窗", "arrow.up.square", "CloseWindow")
+            tile("留缝", "rectangle.split.3x1", "WindowSlit")
+            tile("开天窗", "sun.max", "OpenDormer")
+            tile("关天窗", "sun.min", "CloseDormer")
+            tile("天窗翘起", "sun.max.fill", "SkyWindowLiftUp")
+            tile("启动", "power", "OpenEngine")
+            tile("熄火", "power.circle", "CloseEngine")
+            tile("开空调", "snowflake", "openAir")
+            tile("关空调", "wind", "closeAir")
+            tile("鸣笛", "speaker.wave.2.fill", "Whistle")
             tile("闪灯", "lightbulb", "FlashLight")
+            tile("闪灯鸣笛", "light.beacon.max.fill", "RemoteSearchCar")
+            tile("拍全景", "camera.fill", "photograph")
         }
+    }
+
+    /// 锁车键随状态切换：锁着显示「解锁」，未锁显示「上锁」
+    private var lockTile: some View {
+        let locked = st.lockFL
+        return Button {
+            runCmd(locked ? "UnLockDoor" : "LockDoor", locked ? "解锁" : "上锁")
+        } label: {
+            VStack(spacing: 8) {
+                Image(systemName: locked ? "lock.open.fill" : "lock.fill")
+                    .font(.system(size: 24))
+                    .foregroundColor(locked ? Color(hex: 0x2F9E68) : Color(hex: 0xE53935))
+                Text(locked ? "解锁" : "上锁")
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundColor(Color(hex: 0x2B3A4F))
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 74)
+            .background(locked ? Color(hex: 0xEAF7F0) : Color(hex: 0xFDEDED))
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 
     private func tile(_ title: String, _ icon: String, _ cmd: String) -> some View {
         Button {
             runCmd(cmd, title)
         } label: {
-            VStack(spacing: 10) {
+            VStack(spacing: 8) {
                 Image(systemName: icon)
-                    .font(.system(size: 26))
+                    .font(.system(size: 22))
                     .foregroundColor(Color(hex: 0x1B3A6B))
                 Text(title)
-                    .font(.system(size: 13))
+                    .font(.system(size: 11.5))
                     .foregroundColor(Color(hex: 0x2B3A4F))
                     .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                    .minimumScaleFactor(0.7)
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 112)
+            .frame(height: 74)
             .background(Color.white.opacity(0.94))
-            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .shadow(color: Color(hex: 0xA8BCD4).opacity(0.22), radius: 8, x: 0, y: 4)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .shadow(color: Color(hex: 0xA8BCD4).opacity(0.18), radius: 6, x: 0, y: 3)
         }
         .buttonStyle(.plain)
     }
 
-    // MARK: - 位置条
-
-    private var locationBar: some View {
-        Button { sheet = .location } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "location.fill")
-                    .font(.system(size: 12))
-                    .foregroundColor(KH.blue)
-                Text(st.addr.isEmpty ? "车辆位置：暂无位置（点此刷新）" : "车辆位置：\(st.addr)")
-                    .font(.system(size: 12.5))
-                    .foregroundColor(Color(hex: 0x2B3A4F))
-                    .lineLimit(1)
-                Spacer(minLength: 4)
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 11))
-                    .foregroundColor(Color(hex: 0xA9B3BE))
-            }
-            .padding(.horizontal, 14)
-            .frame(height: 44)
-            .background(Color.white.opacity(0.9))
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        }
-        .buttonStyle(.plain)
-    }
-
-    // MARK: - 全部控制
+    // MARK: - 工具与空调
 
     private var allControls: some View {
         VStack(spacing: 10) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) { showAll.toggle() }
-            } label: {
-                HStack {
-                    Text("全部控制")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(Color(hex: 0x2B3A4F))
-                    Spacer()
-                    Image(systemName: showAll ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 11))
-                        .foregroundColor(Color(hex: 0x8A94A3))
-                }
-                .padding(.horizontal, 14)
-                .frame(height: 42)
-                .background(Color.white.opacity(0.9))
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            HStack(spacing: 8) {
+                toolBtn("全景照片", "photo.on.rectangle") { sheet = .photo }
+                toolBtn("行车轨迹", "point.topleft.down.to.point.bottomright.curvepath") { sheet = .track }
+                toolBtn("操作记录", "clock.arrow.circlepath") { sheet = .history }
+                toolBtn("蓝牙钥匙", "key.fill") { sheet = .ble }
             }
-            .buttonStyle(.plain)
 
-            if showAll {
-                // 工具入口
-                HStack(spacing: 8) {
-                    toolBtn("全景照片", "photo.on.rectangle") { sheet = .photo }
-                    toolBtn("行车轨迹", "point.topleft.down.to.point.bottomright.curvepath") { sheet = .track }
-                    toolBtn("操作记录", "clock.arrow.circlepath") { sheet = .history }
-                    toolBtn("蓝牙钥匙", "key.fill") { sheet = .ble }
+            HStack(spacing: 10) {
+                Image(systemName: "thermometer.medium")
+                    .font(.system(size: 15))
+                    .foregroundColor(Color(hex: 0x2F6FB5))
+                Text("空调温度")
+                    .font(.system(size: 13))
+                    .foregroundColor(Color(hex: 0x2B3A4F))
+                Spacer()
+                Button { stepTemp(-1) } label: {
+                    Image(systemName: "minus.circle.fill")
+                        .font(.system(size: 22)).foregroundColor(Color(hex: 0xB9C7D8))
                 }
-
-                // 空调温度（源码 setTemperature：16–32）
-                HStack(spacing: 10) {
-                    Image(systemName: "thermometer.medium")
-                        .font(.system(size: 15))
-                        .foregroundColor(Color(hex: 0x2F6FB5))
-                    Text("空调温度")
-                        .font(.system(size: 13))
-                        .foregroundColor(Color(hex: 0x2B3A4F))
-                    Spacer()
-                    Button { stepTemp(-1) } label: {
-                        Image(systemName: "minus.circle.fill")
-                            .font(.system(size: 22)).foregroundColor(Color(hex: 0xB9C7D8))
-                    }
-                    Text("\(airTemp)°C")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(Color(hex: 0x1B3A6B))
-                        .frame(width: 58)
-                    Button { stepTemp(1) } label: {
-                        Image(systemName: "plus.circle.fill")
-                            .font(.system(size: 22)).foregroundColor(Color(hex: 0x2F6FB5))
-                    }
+                Text("\(airTemp)°C")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(Color(hex: 0x1B3A6B))
+                    .frame(width: 58)
+                Button { stepTemp(1) } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 22)).foregroundColor(Color(hex: 0x2F6FB5))
                 }
-                .padding(.horizontal, 14)
-                .frame(height: 50)
-                .background(Color.white.opacity(0.9))
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-
-                VStack(spacing: 8) {
-                    pair("启动发动机", "OpenEngine", "关闭发动机", "CloseEngine")
-                    pair("解锁", "UnLockDoor", "关锁", "LockDoor")
-                    pair("打开车窗", "OpenWindow", "车窗微开", "WindowSlit")
-                    pair("关闭车窗", "CloseWindow", "打开天窗", "OpenDormer")
-                    pair("天窗翘起", "SkyWindowLiftUp", "关闭天窗", "CloseDormer")
-                    pair("鸣笛", "RemoteSearchCar", "闪灯", "FlashLight")
-                    pair("闪灯鸣笛", "Whistle", "关空调", "closeAir")
-                }
-                .padding(.top, 2)
             }
+            .padding(.horizontal, 14)
+            .frame(height: 50)
+            .background(Color.white.opacity(0.9))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
     }
 
@@ -420,37 +394,13 @@ struct CarHomeView: View {
         Button(action: action) {
             VStack(spacing: 5) {
                 Image(systemName: icon).font(.system(size: 16)).foregroundColor(KH.blue)
-                Text(title).font(.system(size: 10.5)).foregroundColor(Color(hex: 0x2B3A4F))
-                    .lineLimit(1).minimumScaleFactor(0.8)
+                Text(title).font(.system(size: 10)).foregroundColor(Color(hex: 0x2B3A4F))
+                    .lineLimit(1).minimumScaleFactor(0.7)
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 62)
+            .frame(height: 58)
             .background(Color.white.opacity(0.9))
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func pair(_ l1: String, _ c1: String, _ l2: String, _ c2: String?) -> some View {
-        HStack(spacing: 8) {
-            ctrlBtn(l1) { runCmd(c1, l1) }
-            if let c2 = c2 {
-                ctrlBtn(l2) { runCmd(c2, l2) }
-            } else {
-                ctrlBtn(l2) { sheet = .history }
-            }
-        }
-    }
-
-    private func ctrlBtn(_ title: String, _ action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 13.5))
-                .foregroundColor(Color(hex: 0x2B3A4F))
-                .frame(maxWidth: .infinity)
-                .frame(height: 50)
-                .background(Color.white.opacity(0.9))
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
         .buttonStyle(.plain)
     }

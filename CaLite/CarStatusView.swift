@@ -21,7 +21,7 @@ struct CarStatusView: View {
                     bodyCard
                     locationCard
                     timeCard
-                    rawCard
+                    infoCard
                 }
             }
             .padding(.horizontal, 14)
@@ -107,6 +107,14 @@ struct CarStatusView: View {
                 vline
                 metric("外温", st.outTemp.isEmpty ? "--" : st.outTemp, "°C")
             }
+            Divider()
+            HStack(spacing: 0) {
+                metric("空调温度", "\(CarAPI.shared.cachedTemp)", "°C")
+                vline
+                metric("胎压均值", avgTyre, "kPa")
+                vline
+                metric("门窗", (st.winFL || st.winFR || st.winRL || st.winRR) ? "有开" : "全闭", "")
+            }
         }
         .padding(16)
         .background(Color.white.opacity(0.95))
@@ -128,6 +136,12 @@ struct CarStatusView: View {
                 .foregroundColor(Color(hex: 0x8A94A3))
         }
         .frame(maxWidth: .infinity)
+    }
+
+    private var avgTyre: String {
+        let vals = [st.lf, st.rf, st.lr, st.rr].compactMap { Double($0) }.filter { $0 > 0 }
+        guard !vals.isEmpty else { return "--" }
+        return String(format: "%.0f", vals.reduce(0, +) / Double(vals.count))
     }
 
     private var vline: some View {
@@ -294,56 +308,49 @@ struct CarStatusView: View {
         return Stamp.text(Double(stamp), format: "yyyy-MM-dd HH:mm:ss")
     }
 
-    // MARK: 原始车况（调试）
+    // MARK: 车辆信息（全部解析后展示）
 
-    private var rawCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.15)) { showRaw.toggle() }
-            } label: {
+    private var infoCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("车辆信息")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(Color(hex: 0x6E7A8A))
+                .padding(.bottom, 6)
+
+            ForEach(Array(infoItems.enumerated()), id: \.offset) { i, item in
                 HStack {
-                    Text("原始车况数据")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(Color(hex: 0x6E7A8A))
+                    Text(item.0)
+                        .font(.system(size: 12))
+                        .foregroundColor(Color(hex: 0x8A94A3))
                     Spacer()
-                    Text(showRaw ? "收起" : "展开")
-                        .font(.system(size: 11))
-                        .foregroundColor(Color(hex: 0x8A94A3))
-                    Image(systemName: showRaw ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 10))
-                        .foregroundColor(Color(hex: 0x8A94A3))
-                }
-            }
-            .buttonStyle(.plain)
-
-            if showRaw {
-                let raw = Prefs.s("c_raw")
-                ScrollView([.horizontal, .vertical]) {
-                    Text(raw.isEmpty ? "暂无数据，先点右上角刷新一次" : raw)
-                        .font(.system(size: 9, design: .monospaced))
+                    Text(item.1.isEmpty ? "--" : item.1)
+                        .font(.system(size: 12, design: .monospaced))
                         .foregroundColor(Color(hex: 0x2B3A4F))
-                        .textSelection(.enabled)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
                 }
-                .frame(maxHeight: 300)
-
-                Button {
-                    UIPasteboard.general.string = raw
-                } label: {
-                    Text("复制全部")
-                        .font(.system(size: 11.5))
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 32)
-                        .background(Color(hex: 0x6E7A8A))
-                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .frame(height: 32)
+                if i < infoItems.count - 1 {
+                    Rectangle().fill(Color(hex: 0xF0F4F9)).frame(height: 1)
                 }
-                .buttonStyle(.plain)
             }
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.white.opacity(0.95))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var infoItems: [(String, String)] {
+        let api = CarAPI.shared
+        return [
+            ("车牌", st.carName),
+            ("车型", modelTitle),
+            ("车型代码", api.carSeries),
+            ("VIN", api.vin),
+            ("在线状态", st.online ? "在线" : "离线"),
+            ("车辆上报", st.terminalRaw.isEmpty ? "无" : st.terminalRaw)
+        ]
     }
 
     // MARK: 加载
