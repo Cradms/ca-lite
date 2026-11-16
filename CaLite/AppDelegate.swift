@@ -19,6 +19,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
 
         // 启动就把凭据与车况推给小组件，避免「没打开过 App 小组件是空的」
         DispatchQueue.global(qos: .utility).async {
+            CarAPI.sanitizeTimeCache()
             AppGroupStore.syncCredentials()
             _ = CarAPI.shared.fetchStatus()
             AppGroupStore.syncFromPrefs()
@@ -32,6 +33,13 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         handle(url)
     }
 
+    /// 每次回到前台都同步一次，保证小组件拿到最新数据
+    func applicationDidBecomeActive(_ application: UIApplication) {
+        AppGroupStore.syncCredentials()
+        AppGroupStore.syncFromPrefs()
+    }
+
+    /// 小组件快捷按钮：carapp 深链
     @discardableResult
     private func handle(_ url: URL) -> Bool {
         guard url.scheme == "calite" else { return false }

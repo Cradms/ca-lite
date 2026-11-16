@@ -395,6 +395,12 @@ struct LoginView: View {
         pollTimer?.invalidate()
         polling = false
         timer?.invalidate()
+        // 立刻把凭据推给小组件，不等首页刷新
+        AppGroupStore.syncCredentials()
+        DispatchQueue.global(qos: .userInitiated).async {
+            _ = CarAPI.shared.fetchStatus()
+            AppGroupStore.syncFromPrefs()
+        }
         dismiss()
         onDone()
     }

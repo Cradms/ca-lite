@@ -6,50 +6,111 @@ import SwiftUI
 enum Shared {
     static let group = "group.com.yg.calite"
 
-    /// App Group 不可用（自签丢了 entitlements）时为 nil，读到的全是空
-    static var groupUsable: Bool { UserDefaults(suiteName: group) != nil }
-
-    static var defaults: UserDefaults {
-        UserDefaults(suiteName: group) ?? .standard
+    static var containerURL: URL? {
+        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group)
     }
 
-    static func str(_ k: String) -> String { defaults.string(forKey: k) ?? "" }
+    /// App Group 是否真的能开容器
+    static var groupUsable: Bool { containerURL != nil }
 
-    /// 有凭据就算已登录：w_logged 这个标记跨进程可能没同步到，凭据更可靠
+    /// 文件通道：主 App 落盘的 widget_state.json（UserDefaults 跨进程不可靠时的兜底）
+    private static var fileState: [String: Any] {
+        guard let url = containerURL?.appendingPathComponent("widget_state.json"),
+              let d = try? Data(contentsOf: url),
+              let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else { return [:] }
+        return o
+    }
+
+    static var defaults: UserDefaults { UserDefaults(suiteName: group) ?? .standard }
+
+    static func str(_ k: String) -> String {
+        let v = defaults.string(forKey: k) ?? ""
+        if !v.isEmpty { return v }
+        return fileState[k] as? String ?? ""
+    }
+
+    static func int(_ k: String) -> Int {
+        let v = defaults.integer(forKey: k)
+        if v != 0 { return v }
+        if let f = fileState[k] as? Int { return f }
+        if let f = fileState[k] as? Double { return Int(f) }
+        return 0
+    }
+
+    static func double(_ k: String) -> Double {
+        let v = defaults.double(forKey: k)
+        if v != 0 { return v }
+        if let f = fileState[k] as? Double { return f }
+        if let f = fileState[k] as? Int { return Double(f) }
+        return 0
+    }
+
+    /// 主 App 是否已登录：文件 → UserDefaults → 凭据兜底
     static var logged: Bool {
-        if defaults.integer(forKey: "w_logged") == 1 { return true }
+        if int("logged") == 1 { return true }
+        if int("w_logged") == 1 { return true }
         return !str("w_token").isEmpty && !str("w_cid").isEmpty
     }
 
     static var carName: String {
-        let v = str("w_car")
-        return v.isEmpty ? "我的爱车" : v
+        let v = str("car")
+        if !v.isEmpty { return v }
+        let w = str("w_car")
+        return w.isEmpty ? "我的爱车" : w
     }
 
     static var range: String {
-        let n = defaults.integer(forKey: "w_range")
+        let n = int("range") > 0 ? int("range") : int("w_range")
         return n > 0 ? "\(n)" : "--"
     }
 
-    static var locked: Bool { defaults.integer(forKey: "w_locked") == 1 }
-    static var winOpen: Bool { defaults.integer(forKey: "w_win") == 1 }
-    static var sunOpen: Bool { defaults.integer(forKey: "w_sun") == 1 }
-    static var engineOn: Bool { defaults.integer(forKey: "w_engine") == 1 }
-    static var addr: String { str("w_addr") }
-
-    static var tpFL: Int { defaults.integer(forKey: "w_tp_fl") }
-    static var tpFR: Int { defaults.integer(forKey: "w_tp_fr") }
-    static var tpRL: Int { defaults.integer(forKey: "w_tp_rl") }
-    static var tpRR: Int { defaults.integer(forKey: "w_tp_rr") }
-
-    static var updated: Date {
-        let t = defaults.double(forKey: "w_at")
-        return t > 0 ? Date(timeIntervalSince1970: t) : Date(timeIntervalSince1970: 0)
+    static var locked: Bool {
+        let v = int("locked") != 0 ? int("locked") : int("w_locked")
+        return v == 1
+    }
+    static var winOpen: Bool {
+        let v = int("win") != 0 ? int("win") : int("w_win")
+        return v == 1
+    }
+    static var sunOpen: Bool {
+        let v = int("sun") != 0 ? int("sun") : int("w_sun")
+        return v == 1
+    }
+    static var engineOn: Bool {
+        let v = int("engine") != 0 ? int("engine") : int("w_engine")
+        return v == 1
     }
 
-    // 车型：优先 seriesName，其次 seriesCode
-    static var series: String { str("w_series") }
-    static var seriesName: String { str("w_series_name") }
+    static var addr: String {
+        let v = str("addr")
+        return v.isEmpty ? str("w_addr") : v
+    }
+
+    static var tpFL: Int { int("tp_fl") > 0 ? int("tp_fl") : int("w_tp_fl") }
+    static var tpFR: Int { int("tp_fr") > 0 ? int("tp_fr") : int("w_tp_fr") }
+    static var tpRL: Int { int("tp_rl") > 0 ? int("tp_rl") : int("w_tp_rl") }
+    static var tpRR: Int { int("tp_rr") > 0 ? int("tp_rr") : int("w_tp_rr") }
+
+    static var updated: Date {
+        let a = double("at") > 0 ? double("at") : double("w_at")
+        return a > 0 ? Date(timeIntervalSince1970: a) : Date(timeIntervalSince1970: 0)
+    }
+
+    static var series: String {
+        let v = str("series")
+        return v.isEmpty ? str("w_series") : v
+    }
+    static var seriesName: String {
+        let v = str("series_name")
+        return v.isEmpty ? str("w_series_name") : v
+    }
+
+    // 诊断用：给未登录视图显示到底读到了什么
+    static var debugLine: String {
+        let t = str("w_token").count
+        let c = str("w_cid").count
+        return "token \(t) / cid \(c) / logged \(int("logged"))"
+    }
 
     static func normalize(_ s: String) -> String {
         let u = s.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
@@ -127,6 +188,7 @@ struct Entry: TimelineEntry {
     let updated: Date
     let logged: Bool
     let groupUsable: Bool
+    let debug: String
 }
 
 struct Provider: TimelineProvider {
@@ -150,7 +212,7 @@ struct Provider: TimelineProvider {
               carImage: "car_c281", range: "567", locked: true, winOpen: false,
               sunOpen: false, engineOn: false, addr: "四川省达州市渠县渠江街道长德路",
               tpFL: 237, tpFR: 237, tpRL: 241, tpRR: 238,
-              updated: Date(), logged: true, groupUsable: true)
+              updated: Date(), logged: true, groupUsable: true, debug: "sample")
     }
 
     private func current() -> Entry {
@@ -168,7 +230,8 @@ struct Provider: TimelineProvider {
               tpRL: Shared.tpRL, tpRR: Shared.tpRR,
               updated: Shared.updated,
               logged: Shared.logged,
-              groupUsable: Shared.groupUsable)
+              groupUsable: Shared.groupUsable,
+              debug: Shared.debugLine)
     }
 }
 
@@ -219,6 +282,10 @@ struct CaLiteWidgetEntryView: View {
             Text(entry.groupUsable ? "点一下进入 App" : "换 TrollStore 安装或补签名")
                 .font(.system(size: 9))
                 .foregroundColor(faint)
+                .multilineTextAlignment(.center)
+            Text(entry.debug)
+                .font(.system(size: 8, design: .monospaced))
+                .foregroundColor(faint.opacity(0.8))
                 .multilineTextAlignment(.center)
         }
         .padding(8)

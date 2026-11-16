@@ -8,6 +8,13 @@ enum AppGroupStore {
 
     static var defaults: UserDefaults { Prefs.d }
 
+    /// App Group 容器里的文件通道（UserDefaults 跨进程不可靠时的备份）
+    static var stateURL: URL? {
+        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group)?
+            .appendingPathComponent("widget_state.json")
+    }
+
+
     /// App Group 是否真的可用（自签时 entitlements 掉了就会 false，小组件读不到数据）
     static var groupAvailable: Bool {
         UserDefaults(suiteName: group) != nil
@@ -39,6 +46,7 @@ enum AppGroupStore {
         defaults.set(Prefs.i("c_tp_rr"), forKey: "w_tp_rr")
 
         defaults.synchronize()
+        writeStateFile()
         WidgetCenter.shared.reloadAllTimelines()
     }
 
@@ -78,5 +86,28 @@ enum AppGroupStore {
         let n = CarModel.name(CarModel.normalize(seriesName.isEmpty ? series : seriesName))
         if !n.isEmpty { return n }
         return seriesName.isEmpty ? "我的爱车" : seriesName
+    }
+
+    /// 把小组件需要的字段落成 JSON 文件
+    private static func writeStateFile() {
+        guard let url = stateURL else { return }
+        let api = CarAPI.shared
+        let dict: [String: Any] = [
+            "logged": api.isLoggedIn ? 1 : 0,
+            "car": api.carName,
+            "series": api.carSeries,
+            "series_name": api.carSeriesName,
+            "range": Prefs.i("c_range"),
+            "locked": Prefs.b("c_locked") ? 1 : 0,
+            "win": Prefs.b("c_win") ? 1 : 0,
+            "sun": Prefs.b("c_sun") ? 1 : 0,
+            "engine": Prefs.b("c_engine") ? 1 : 0,
+            "addr": Prefs.s("c_addr"),
+            "tp_fl": Prefs.i("c_tp_fl"), "tp_fr": Prefs.i("c_tp_fr"),
+            "tp_rl": Prefs.i("c_tp_rl"), "tp_rr": Prefs.i("c_tp_rr"),
+            "at": Double(Prefs.l("c_upd")) / 1000.0
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: dict) else { return }
+        try? data.write(to: url, options: .atomic)
     }
 }

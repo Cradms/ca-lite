@@ -795,6 +795,8 @@ final class CarAPI {
         }
         if let vt = Self.vehicleTime(d) {
             Prefs.setl(Int64(vt.timeIntervalSince1970), "c_vtime")
+        } else {
+            Prefs.setl(0, "c_vtime")     // 车况没带合法时间就清掉，别留着旧脏值
         }
 
         // 位置
@@ -876,7 +878,10 @@ final class CarAPI {
             out["volt"] = Prefs.s("c_volt")
             out["outTemp"] = Prefs.s("c_out")
             out["fuel"] = Prefs.s("c_fuel")
-            out["vehicleTime"] = Int(Prefs.l("c_vtime"))
+            // 读取时也要校验：历史缓存里可能躺着 1860000（1970-01-22）这种脏值
+            let vtRaw = Int(Prefs.l("c_vtime"))
+            let vtValid = vtRaw > 0 && CarAPI.plausible(Date(timeIntervalSince1970: Double(vtRaw)))
+            out["vehicleTime"] = vtValid ? vtRaw : 0
             out["doorFL"] = Prefs.b("c_door_fl"); out["doorFR"] = Prefs.b("c_door_fr")
             out["doorRL"] = Prefs.b("c_door_rl"); out["doorRR"] = Prefs.b("c_door_rr")
             out["addr"] = Prefs.s("c_addr")
@@ -1283,6 +1288,15 @@ final class CarAPI {
             if let t = parseAnyTime(d[k]) { return t }
         }
         return nil
+    }
+
+    /// 清理历史上写入的不合法时间戳（例如 1860000 会被显示成 1970-01-22）
+    static func sanitizeTimeCache() {
+        let raw = Prefs.l("c_vtime")
+        if raw != 0 {
+            let d = Date(timeIntervalSince1970: Double(raw))
+            if !plausible(d) { Prefs.setl(0, "c_vtime") }
+        }
     }
 
     /// 时间合法性：2015-01-01 之后，且不超过现在 30 天
