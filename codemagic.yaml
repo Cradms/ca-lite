@@ -112,7 +112,7 @@ workflows:
           set -eo pipefail
           keychain initialize
           keychain add-certificates
-          # 为所有 target（含 CaLiteWidget）按 bundle id 匹配 profile
+          # 单 target，按 bundle id 匹配 profile
           xcode-project use-profiles
           echo "---- 已应用的签名设置 ----"
           xcode-project list-profiles 2>/dev/null || true
