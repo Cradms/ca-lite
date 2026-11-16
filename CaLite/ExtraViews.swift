@@ -254,69 +254,135 @@ struct HistoryView: View {
     }
 }
 
-// MARK: - 全景照片
+// MARK: - 全景照片（支持拍摄 + 全屏预览可关闭）
 struct PhotoView: View {
     @State private var items: [[String: Any]] = []
     @State private var loading = true
-    @State private var preview: String?
+    @State private var shooting = false
+    @State private var preview: PhotoItem?
+    @State private var toast: String?
+    @State private var errMsg = ""
 
     private let cols = [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)]
 
     var body: some View {
         ScrollView {
-            if loading {
-                ProgressView().padding(.top, 60)
-            } else if items.isEmpty {
-                VStack(spacing: 8) {
-                    Image(systemName: "photo.on.rectangle.angled")
-                        .font(.system(size: 34)).foregroundColor(C.faint)
-                    Text("车机还没上传全景照片")
-                        .font(.system(size: 13)).foregroundColor(C.muted)
-                }
-                .padding(.top, 80)
-            } else {
-                LazyVGrid(columns: cols, spacing: 8) {
-                    ForEach(Array(items.enumerated()), id: \.offset) { _, it in
-                        let url = (it["thumb"] as? String) ?? ""
-                        Button { preview = (it["url"] as? String) ?? url } label: {
-                            VStack(alignment: .leading, spacing: 4) {
-                                AsyncImage(url: URL(string: url)) { ph in
-                                    if let img = ph.image {
-                                        img.resizable().scaledToFill()
-                                    } else {
-                                        Rectangle().fill(C.bg)
-                                            .overlay(ProgressView())
-                                    }
+            VStack(spacing: 10) {
+                shootBar
+                if loading {
+                    ProgressView("加载中…").padding(.top, 50)
+                } else if items.isEmpty {
+                    VStack(spacing: 8) {
+                        Image(systemName: "photo.on.rectangle.angled")
+                            .font(.system(size: 34)).foregroundColor(C.faint)
+                        Text(errMsg.isEmpty ? "还没有全景照片" : errMsg)
+                            .font(.system(size: 13)).foregroundColor(C.muted)
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding(.top, 60)
+                    .padding(.horizontal, 30)
+                } else {
+                    LazyVGrid(columns: cols, spacing: 8) {
+                        ForEach(Array(items.enumerated()), id: \.offset) { _, it in
+                            let thumb = (it["thumb"] as? String) ?? ""
+                            let full = (it["url"] as? String) ?? thumb
+                            Button {
+                                if let u = URL(string: full) {
+                                    preview = PhotoItem(url: u, time: (it["time"] as? String) ?? "")
                                 }
-                                .frame(height: 130)
-                                .clipped()
-                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                Text((it["time"] as? String) ?? "")
-                                    .font(.system(size: 10.5)).foregroundColor(C.faint)
-                                    .lineLimit(1)
+                            } label: {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    AsyncImage(url: URL(string: thumb)) { ph in
+                                        if let img = ph.image {
+                                            img.resizable().scaledToFill()
+                                        } else if ph.error != nil {
+                                            Rectangle().fill(C.bg)
+                                                .overlay(Image(systemName: "photo")
+                                                    .foregroundColor(C.faint))
+                                        } else {
+                                            Rectangle().fill(C.bg).overlay(ProgressView())
+                                        }
+                                    }
+                                    .frame(height: 130)
+                                    .frame(maxWidth: .infinity)
+                                    .clipped()
+                                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    Text((it["time"] as? String) ?? "")
+                                        .font(.system(size: 10.5)).foregroundColor(C.faint)
+                                        .lineLimit(1)
+                                }
                             }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
-                .padding(12)
             }
+            .padding(12)
         }
+        .background(C.bg.ignoresSafeArea())
         .navigationTitle("全景照片")
         .navigationBarTitleDisplayMode(.inline)
-        .sheet(item: Binding(
-            get: { preview.map { URLBox(url: $0) } },
-            set: { if $0 == nil { preview = nil } })) { box in
-            ScrollView([.horizontal, .vertical]) {
-                AsyncImage(url: URL(string: box.url)) { ph in
-                    if let img = ph.image {
-                        img.resizable().scaledToFit()
-                    } else { ProgressView() }
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button { load() } label: {
+                    Image(systemName: "arrow.clockwise").foregroundColor(C.blue)
                 }
             }
-            .background(Color.black)
+        }
+        .overlay(alignment: .bottom) {
+            if let t = toast {
+                Text(t)
+                    .font(.system(size: 13))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 16).padding(.vertical, 10)
+                    .background(C.txt.opacity(0.9))
+                    .clipShape(Capsule())
+                    .padding(.bottom, 30)
+            }
+        }
+        .fullScreenCover(item: $preview) { p in
+            PhotoPreview(item: p)
         }
         .onAppear(perform: load)
+    }
+
+    private var shootBar: some View {
+        Button { shoot() } label: {
+            HStack(spacing: 8) {
+                if shooting {
+                    ProgressView().tint(.white)
+                } else {
+                    Image(systemName: "camera.fill").font(.system(size: 14))
+                }
+                Text(shooting ? "正在拍照，请稍候…" : "拍摄全景照片")
+                    .font(.system(size: 14, weight: .medium))
+            }
+            .foregroundColor(.white)
+            .frame(maxWidth: .infinity)
+            .frame(height: 46)
+            .background(shooting ? C.blue.opacity(0.6) : C.blue)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .disabled(shooting)
+    }
+
+    private func shoot() {
+        if CarAPI.shared.controlPin.isEmpty {
+            toast = "请先在首页右上角设置控车码"
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { toast = nil }
+            return
+        }
+        shooting = true
+        // 源码 PhotoActivity：Api.execute("photograph")
+        CarAPI.shared.control(cmd: "photograph") { ok, msg in
+            shooting = false
+            toast = ok ? "拍照指令已发送，等 5 秒后自动刷新" : "拍照失败：\(msg)"
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { toast = nil }
+            if ok {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 5) { load() }
+            }
+        }
     }
 
     private func load() {
@@ -328,7 +394,86 @@ struct PhotoView: View {
     }
 }
 
-struct URLBox: Identifiable {
-    let url: String
-    var id: String { url }
+struct PhotoItem: Identifiable {
+    let url: URL
+    let time: String
+    var id: String { url.absoluteString }
+}
+
+/// 全屏预览：顶部有明确关闭按钮，图片加载失败可重试
+struct PhotoPreview: View {
+    let item: PhotoItem
+    @Environment(\.dismiss) private var dismiss
+    @State private var retry = 0
+    @State private var saved = false
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            AsyncImage(url: item.url) { phase in
+                switch phase {
+                case .success(let img):
+                    img.resizable().scaledToFit()
+                case .failure:
+                    VStack(spacing: 12) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.system(size: 30)).foregroundColor(.gray)
+                        Text("图片加载失败")
+                            .font(.system(size: 13)).foregroundColor(.gray)
+                        Button("重试") { retry += 1 }
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 18).padding(.vertical, 8)
+                            .background(Color.white.opacity(0.18))
+                            .clipShape(Capsule())
+                    }
+                default:
+                    ProgressView().tint(.white)
+                }
+            }
+            .id(retry)
+            .padding(.vertical, 60)
+
+            VStack {
+                HStack {
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(width: 38, height: 38)
+                            .background(Color.white.opacity(0.18))
+                            .clipShape(Circle())
+                    }
+                    Spacer()
+                    Text(item.time)
+                        .font(.system(size: 11))
+                        .foregroundColor(.white.opacity(0.7))
+                    Spacer()
+                    Button { saveImage() } label: {
+                        Image(systemName: saved ? "checkmark" : "square.and.arrow.down")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(width: 38, height: 38)
+                            .background(Color.white.opacity(0.18))
+                            .clipShape(Circle())
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                Spacer()
+            }
+        }
+        .statusBarHidden(false)
+    }
+
+    private func saveImage() {
+        URLSession.shared.dataTask(with: item.url) { data, _, _ in
+            guard let data = data, let img = UIImage(data: data) else { return }
+            DispatchQueue.main.async {
+                UIImageWriteToSavedPhotosAlbum(img, nil, nil, nil)
+                saved = true
+            }
+        }.resume()
+    }
 }

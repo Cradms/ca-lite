@@ -16,6 +16,13 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         if let url = launchOptions?[.url] as? URL {
             _ = handle(url)
         }
+
+        // 启动就把凭据与车况推给小组件，避免「没打开过 App 小组件是空的」
+        DispatchQueue.global(qos: .utility).async {
+            AppGroupStore.syncCredentials()
+            _ = CarAPI.shared.fetchStatus()
+            AppGroupStore.syncFromPrefs()
+        }
         return true
     }
 

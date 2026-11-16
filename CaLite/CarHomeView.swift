@@ -110,7 +110,7 @@ struct CarHomeView: View {
 
     private var heroCard: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("更新于 \(timeText)")
+            Text(timeLabel)
                 .font(.system(size: 11.5))
                 .foregroundColor(Color(hex: 0x6E7A8A))
                 .frame(maxWidth: .infinity, alignment: .center)
@@ -219,13 +219,21 @@ struct CarHomeView: View {
         return code.isEmpty ? "car" : "car_" + code.lowercased()
     }
 
+    /// 车辆上报时间优先；拿不到才退回本机刷新时间（并在前缀上区分）
+    private var isVehicleTime: Bool { st.vehicleTime > 0 }
+
     private var timeText: String {
-        guard st.updatedAt > 0 else { return "--" }
-        let ms = Double(st.updatedAt)
+        let stamp = st.vehicleTime > 0 ? st.vehicleTime : st.updatedAt
+        guard stamp > 0 else { return "--" }
+        let ms = Double(stamp)
         let d = Date(timeIntervalSince1970: ms > 1_000_000_000 ? ms / 1000 : ms)
         let f = DateFormatter()
         f.dateFormat = "MM.dd HH:mm"
         return f.string(from: d)
+    }
+
+    private var timeLabel: String {
+        isVehicleTime ? "车辆更新于 \(timeText)" : "本机刷新于 \(timeText)"
     }
 
     private var winText: String {
@@ -626,6 +634,7 @@ struct CarState {
     var seriesName = ""
     var addr = ""
     var updatedAt = 0
+    var vehicleTime = 0
     var sunOpen = false
     var engineOn = false
     var airOn = false
@@ -672,6 +681,14 @@ struct CarState {
 
         lf = str("tpFL"); rf = str("tpFR")
         lr = str("tpRL"); rr = str("tpRR")
+        odometer = str("odo")
+        voltage = str("volt")
+        outTemp = str("outTemp")
+        fuel = str("fuel")
+        vehicleTime = int("vehicleTime")
+
+        doorFL = flag("doorFL"); doorFR = flag("doorFR")
+        doorRL = flag("doorRL"); doorRR = flag("doorRR")
         online = !range.isEmpty
     }
 

@@ -769,6 +769,29 @@ final class CarAPI {
         if tpRl > 0 { Prefs.seti(tpRl, "c_tp_rl") }
         if tpRr > 0 { Prefs.seti(tpRr, "c_tp_rr") }
 
+        // 里程 / 电压 / 外温 / 油量（car-ios 车辆状况页要用）
+        let odo = num(["totalOdometer", "odometer", "totalMileage"])
+        if odo > 0 { Prefs.seti(Int(odo), "c_odo") }
+        let volt = num(["batteryVoltage", "voltage", "batteryVol"])
+        if volt > 0 { Prefs.set(String(format: "%.1f", volt), "c_volt") }
+        let outT = num(["environmentalTemp", "outTemp", "outsideTemp", "envTemp"])
+        if outT != 0 { Prefs.set(String(format: "%.0f", outT), "c_out") }
+        let fuel = num(["fuelLeftover", "fuel", "oilLeft"])
+        if fuel > 0 { Prefs.set(String(format: "%.1f", fuel), "c_fuel") }
+
+        // 四门开合
+        let dFl = flag(["leftFrontDoor", "driverDoor"]), dFr = flag(["rightFrontDoor", "passengerDoor"])
+        let dRl = flag(["leftRearDoor"]), dRr = flag(["rightRearDoor"])
+        if dFl >= 0 || dFr >= 0 || dRl >= 0 || dRr >= 0 {
+            Prefs.setb(dFl == 1, "c_door_fl"); Prefs.setb(dFr == 1, "c_door_fr")
+            Prefs.setb(dRl == 1, "c_door_rl"); Prefs.setb(dRr == 1, "c_door_rr")
+        }
+
+        // 车机上报时间（不是本机刷新时间）
+        if let vt = Self.vehicleTime(d) {
+            Prefs.setl(Int64(vt.timeIntervalSince1970), "c_vtime")
+        }
+
         // 位置
         func coord(_ keys: [String]) -> Double {
             for k in keys {
@@ -837,6 +860,13 @@ final class CarAPI {
             out["airOn"] = Prefs.b("c_air")
             out["tpFL"] = Prefs.i("c_tp_fl"); out["tpFR"] = Prefs.i("c_tp_fr")
             out["tpRL"] = Prefs.i("c_tp_rl"); out["tpRR"] = Prefs.i("c_tp_rr")
+            out["odo"] = Prefs.i("c_odo")
+            out["volt"] = Prefs.s("c_volt")
+            out["outTemp"] = Prefs.s("c_out")
+            out["fuel"] = Prefs.s("c_fuel")
+            out["vehicleTime"] = Int(Prefs.l("c_vtime"))
+            out["doorFL"] = Prefs.b("c_door_fl"); out["doorFR"] = Prefs.b("c_door_fr")
+            out["doorRL"] = Prefs.b("c_door_rl"); out["doorRR"] = Prefs.b("c_door_rr")
             out["addr"] = Prefs.s("c_addr")
             out["updatedAt"] = Int(Prefs.l("c_upd"))
             out["series"] = self.carSeries
@@ -1208,6 +1238,51 @@ final class CarAPI {
             if err == nil { _ = self.fetchStatus() }
             DispatchQueue.main.async { done(err == nil, err ?? "温度已设为 \(v)°C") }
         }
+    }
+
+    /// 从车况里取「车机上报时间」；各车型字段名不统一，按常见名 + 含 time 的键兜底
+    static func vehicleTime(_ d: [String: Any]) -> Date? {
+        let keys = ["terminalTime", "lastUpdateTime", "updateTime", "reportTime",
+                    "gpsTime", "collectTime", "dataTime", "carTime", "positionTime",
+                    "sampleTime", "uploadTime", "refreshTime"]
+        for k in keys {
+            if let t = parseAnyTime(d[k]) { return t }
+        }
+        for (k, v) in d where k.lowercased().contains("time") {
+            if let t = parseAnyTime(v) { return t }
+        }
+        return nil
+    }
+
+    /// 支持 "yyyy-MM-dd HH:mm:ss" / ISO / 秒、毫秒时间戳 / yyyyMMddHHmmss
+    static func parseAnyTime(_ v: Any?) -> Date? {
+        if let n = v as? Double, n > 1_000_000_000 {
+            return Date(timeIntervalSince1970: n > 1e12 ? n / 1000 : n)
+        }
+        if let n = v as? Int, n > 1_000_000_000 {
+            let d = Double(n)
+            return Date(timeIntervalSince1970: d > 1e12 ? d / 1000 : d)
+        }
+        guard let str = v as? String else { return nil }
+        var text = str.trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.isEmpty { return nil }
+        if let n = Double(text), n > 1_000_000_000 {
+            return Date(timeIntervalSince1970: n > 1e12 ? n / 1000 : n)
+        }
+        text = text.replacingOccurrences(of: "T", with: " ")
+        text = text.replacingOccurrences(of: "/", with: "-")
+        if let dot = text.firstIndex(of: "."), text.count > 19 {
+            text = String(text[text.startIndex..<dot])
+        }
+        let formats = ["yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm", "yyyyMMddHHmmss"]
+        for f in formats {
+            let df = DateFormatter()
+            df.locale = Locale(identifier: "en_US_POSIX")
+            df.timeZone = TimeZone.current
+            df.dateFormat = f
+            if let dt = df.date(from: text) { return dt }
+        }
+        return nil
     }
 
     /// 主动刷新车辆定位：先走定位接口，失败再拉一次车况兜底

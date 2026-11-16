@@ -10,9 +10,9 @@ struct RootView: View {
                 .tabItem { Label("车控", systemImage: "car.fill") }
                 .tag(0)
 
-            NavigationView { LocationView() }
+            NavigationView { CarStatusView() }
                 .navigationViewStyle(.stack)
-                .tabItem { Label("位置", systemImage: "map.fill") }
+                .tabItem { Label("车况", systemImage: "speedometer") }
                 .tag(1)
 
             NavigationView { MoreView() }
