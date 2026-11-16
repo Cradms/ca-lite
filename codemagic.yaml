@@ -63,21 +63,23 @@ workflows:
     artifacts:
       - CaLite-unsigned.ipa
 
-  # ---------------- 已签名：手动上传 p12 + 两个 profile 后跑这条 ----------------
-  # 前置：
-  #   1) Apple Developer（付费账号）建 App ID：com.yg.calite 与 com.yg.calite.widget
-  #   2) App Groups 建 group.com.yg.calite，并在两个 App ID 里启用
-  #   3) Certificates 生成 Apple Distribution，导出 .p12
-  #   4) Profiles 建两个 Ad Hoc profile（各绑一个 App ID，勾选设备）
-  #   5) Codemagic → 项目 → Code signing identities 上传 1 个 p12 + 2 个 mobileprovision
+  # ---------------- 已签名（Ad Hoc）：用你的 Apple Distribution 证书 ----------------
+  # 前置（在你的开发者账号后台完成）：
+  #   1) Identifiers 里要有 App ID = com.yg.calite（要和 project.yml 的 Bundle ID 一致）
+  #   2) Profiles 新建一个 Ad Hoc 描述文件：绑 com.yg.calite + 证书 + 设备 UDID
+  #   3) 钥匙串导出该证书的 .p12（必须带私钥）
+  #   4) Codemagic → 项目 → Code signing identities 上传：1 个 p12 + 1 个 mobileprovision
   ca-lite-signed:
-    name: CA Lite · 已签名 IPA
+    name: CA Lite · 已签名 IPA (Ad Hoc)
     instance_type: mac_mini_m2
     max_build_duration: 40
     environment:
       xcode: latest
       vars:
         BUNDLE_ID: com.yg.calite
+        TEAM_ID: K4M82K8J22
+        EXPORT_METHOD: ad-hoc
+        CERT_NAME: Apple Distribution
     scripts:
       - name: 装 XcodeGen
         script: brew install xcodegen
@@ -85,45 +87,67 @@ workflows:
       - name: 生成工程
         script: |
           xcodegen generate
+          echo "---- Bundle ID ----"
           grep -n "PRODUCT_BUNDLE_IDENTIFIER" project.yml
 
       - name: 检查签名材料
         script: |
-          echo "======== 证书与描述文件检查 ========"
-          echo "-- p12 --"
-          ls -la ~/Library/Developer/Xcode/UserData/Certificates/ 2>&1 || true
-          ls -la ~/Library/MobileDevice/Certificates/ 2>&1 || true
-          echo "-- profiles --"
-          ls -la ~/Library/MobileDevice/Provisioning\ Profiles/ 2>&1 || true
+          echo "======== 签名材料检查 ========"
           P12N=$(ls ~/Library/Developer/Xcode/UserData/Certificates/*.p12 2>/dev/null | wc -l)
           PRON=$(ls ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision 2>/dev/null | wc -l)
-          echo "统计: p12=$P12N 个, profile=$PRON 个"
+          echo "p12 = $P12N 个, profile = $PRON 个"
           if [ "$P12N" -eq 0 ]; then
-            echo "!! 没有 p12：去 Codemagic 项目 → Code signing identities 上传 .p12"
+            echo "!! 没有 p12：Codemagic → Code signing identities → Distribution certificates 上传"
             exit 1
           fi
-          if [ "$PRON" -lt 2 ]; then
-            echo "!! profile 少于 2 个：com.yg.calite 和 com.yg.calite.widget 各要一个"
+          if [ "$PRON" -eq 0 ]; then
+            echo "!! 没有描述文件：同一页 → Provisioning profiles 上传 Ad Hoc profile"
+            exit 1
           fi
-          echo "===================================="
+          echo "---- 已上传的 profile 列表 ----"
+          for f in ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision; do
+            echo "文件: $(basename "$f")"
+            security cms -D -i "$f" 2>/dev/null | /usr/libexec/PlistBuddy \
+              -c "Print :Name" -c "Print :UUID" -c "Print :ProvisionedDevices" /dev/stdin 2>/dev/null | head -6 || true
+          done
+          echo "=============================="
 
-      - name: 导入证书与描述文件
+      - name: 导入证书
         script: |
           set -eo pipefail
           keychain initialize
           keychain add-certificates
-          # 单 target，按 bundle id 匹配 profile
+          # 给所有 target 按 bundle id 自动匹配 profile
           xcode-project use-profiles
-          echo "---- 已应用的签名设置 ----"
-          xcode-project list-profiles 2>/dev/null || true
+          echo "---- 当前签名设置 ----"
+          grep -rn "PROVISIONING_PROFILE_SPECIFIER\|CODE_SIGN_IDENTITY" CaLite.xcodeproj/project.pbxproj | head -6 || true
 
-      - name: 出签名 IPA
+      - name: 归档并导出 IPA
         script: |
           set -eo pipefail
-          xcode-project build-ipa \
-            --project CaLite.xcodeproj \
-            --scheme CaLite \
-            --config Release
-          ls -lh build/ios/ipa
+          PB=$(ls ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision | head -1)
+          PROF_NAME=$(security cms -D -i "$PB" | /usr/libexec/PlistBuddy -c "Print :Name" /dev/stdin)
+          echo "使用描述文件: $PROF_NAME"
+
+          python3 gen_export_options.py "$BUNDLE_ID" "$TEAM_ID" "$EXPORT_METHOD" "$PROF_NAME" "$CERT_NAME"
+          cat ExportOptions.plist
+
+          xcodebuild archive \
+            -project CaLite.xcodeproj \
+            -scheme CaLite \
+            -configuration Release \
+            -sdk iphoneos \
+            -archivePath "$PWD/build/CaLite.xcarchive" \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM="$TEAM_ID" \
+            | tail -40
+
+          mkdir -p build/ipa
+          xcodebuild -exportArchive \
+            -archivePath "$PWD/build/CaLite.xcarchive" \
+            -exportOptionsPlist ExportOptions.plist \
+            -exportPath "$PWD/build/ipa" \
+            | tail -30
+          ls -lh build/ipa
     artifacts:
-      - build/ios/ipa/*.ipa
+      - build/ipa/*.ipa
