@@ -1,42 +1,52 @@
 import WidgetKit
 import SwiftUI
-import Security
 
 // MARK: - 共享存储（App Group）
+
 enum Shared {
     static let group = "group.com.yg.calite"
+
+    /// App Group 不可用（自签丢了 entitlements）时为 nil，读到的全是空
+    static var groupUsable: Bool { UserDefaults(suiteName: group) != nil }
 
     static var defaults: UserDefaults {
         UserDefaults(suiteName: group) ?? .standard
     }
 
     static func str(_ k: String) -> String { defaults.string(forKey: k) ?? "" }
-    static func set(_ v: String, _ k: String) { defaults.set(v, forKey: k) }
 
-    static var fuel: String { str("w_fuel") }
+    static var logged: Bool { defaults.integer(forKey: "w_logged") == 1 }
+
+    static var carName: String {
+        let v = str("w_car")
+        return v.isEmpty ? "我的爱车" : v
+    }
+
     static var range: String {
         let n = defaults.integer(forKey: "w_range")
-        return n > 0 ? "\(n)" : ""
+        return n > 0 ? "\(n)" : "--"
     }
-    static var odo: String { str("w_odo") }
-    static var voltage: String { str("w_voltage") }
-    static var carName: String { str("w_car") }
-    static var online: Bool { str("w_online") == "1" || defaults.integer(forKey: "w_logged") == 1 }
-    static var logged: Bool { defaults.integer(forKey: "w_logged") == 1 }
-    static var anyOpen: Bool {
-        defaults.integer(forKey: "w_win") == 1 || defaults.integer(forKey: "w_sun") == 1
-    }
+
     static var locked: Bool { defaults.integer(forKey: "w_locked") == 1 }
+    static var winOpen: Bool { defaults.integer(forKey: "w_win") == 1 }
+    static var sunOpen: Bool { defaults.integer(forKey: "w_sun") == 1 }
+    static var engineOn: Bool { defaults.integer(forKey: "w_engine") == 1 }
+    static var addr: String { str("w_addr") }
+
+    static var tpFL: Int { defaults.integer(forKey: "w_tp_fl") }
+    static var tpFR: Int { defaults.integer(forKey: "w_tp_fr") }
+    static var tpRL: Int { defaults.integer(forKey: "w_tp_rl") }
+    static var tpRR: Int { defaults.integer(forKey: "w_tp_rr") }
+
     static var updated: Date {
         let t = defaults.double(forKey: "w_at")
         return t > 0 ? Date(timeIntervalSince1970: t) : Date(timeIntervalSince1970: 0)
     }
 
-    // 车型（4.5.6 小组件按车型选车模图）
+    // 车型：优先 seriesName，其次 seriesCode
     static var series: String { str("w_series") }
     static var seriesName: String { str("w_series_name") }
 
-    /// 与 CarModel.normalize 对齐（小组件 target 不带 CarModel.swift）
     static func normalize(_ s: String) -> String {
         let u = s.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         if u.isEmpty { return "" }
@@ -91,55 +101,39 @@ enum Shared {
         default: return seriesName
         }
     }
-
-    static func saveState(fuel: String, range: String, odo: String, voltage: String,
-                          carName: String, online: Bool, anyOpen: Bool, locked: Bool) {
-        set(fuel, "w_fuel"); set(range, "w_range"); set(odo, "w_odo")
-        set(voltage, "w_voltage"); set(carName, "w_car")
-        set(online ? "1" : "0", "w_online")
-        set(anyOpen ? "1" : "0", "w_open")
-        set(locked ? "1" : "0", "w_locked")
-        defaults.set(Date().timeIntervalSince1970, forKey: "w_at")
-    }
-
-    // 凭证（与主 App 的 Keychain 同步一份到 App Group，供小组件发指令）
-    static var token: String { str("w_token") }
-    static var refreshToken: String { str("w_rt") }
-    static var carId: String { str("w_cid") }
-    static var pin: String { str("w_pin") }
 }
 
 // MARK: - 数据
+
 struct Entry: TimelineEntry {
     let date: Date
-    let fuel: String
-    let range: String
-    let odo: String
-    let voltage: String
     let carName: String
-    let online: Bool
-    let anyOpen: Bool
+    let modelTitle: String
+    let carImage: String
+    let range: String
     let locked: Bool
+    let winOpen: Bool
+    let sunOpen: Bool
+    let engineOn: Bool
+    let addr: String
+    let tpFL: Int
+    let tpFR: Int
+    let tpRL: Int
+    let tpRR: Int
     let updated: Date
-    var modelTitle: String = ""
-    var carImage: String = "car"
-    var logged: Bool = false
+    let logged: Bool
+    let groupUsable: Bool
 }
 
 struct Provider: TimelineProvider {
-    func placeholder(in context: Context) -> Entry {
-        Entry(date: Date(), fuel: "42", range: "601", odo: "54846",
-              voltage: "12.2", carName: "UNI-V", online: true,
-              anyOpen: false, locked: true, updated: Date(),
-              modelTitle: "UNI-V", carImage: "car_c281", logged: true)
-    }
+    func placeholder(in context: Context) -> Entry { sample }
 
     func getSnapshot(in context: Context, completion: @escaping (Entry) -> Void) {
         completion(current())
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<Entry>) -> Void) {
-        // 小组件自己拉一次车况，不依赖主 App 是否打开过
+        // 先自己拉一次车况，再出 Entry；网络失败也用缓存出
         WidgetAPI.refresh {
             let e = self.current()
             let next = Calendar.current.date(byAdding: .minute, value: 15, to: Date()) ?? Date()
@@ -147,39 +141,50 @@ struct Provider: TimelineProvider {
         }
     }
 
+    private var sample: Entry {
+        Entry(date: Date(), carName: "川 QQQ318", modelTitle: "UNI-V",
+              carImage: "car_c281", range: "567", locked: true, winOpen: false,
+              sunOpen: false, engineOn: false, addr: "四川省达州市渠县渠江街道长德路",
+              tpFL: 237, tpFR: 237, tpRL: 241, tpRR: 238,
+              updated: Date(), logged: true, groupUsable: true)
+    }
+
     private func current() -> Entry {
         Entry(date: Date(),
-              fuel: Shared.fuel.isEmpty ? "--" : Shared.fuel,
-              range: Shared.range.isEmpty ? "--" : Shared.range,
-              odo: Shared.odo.isEmpty ? "--" : Shared.odo,
-              voltage: Shared.voltage.isEmpty ? "--" : Shared.voltage,
-              carName: Shared.carName.isEmpty ? "我的爱车" : Shared.carName,
-              online: Shared.online,
-              anyOpen: Shared.anyOpen,
-              locked: Shared.locked,
-              updated: Shared.updated,
+              carName: Shared.carName,
               modelTitle: Shared.modelTitle,
               carImage: Shared.carImage,
-              logged: Shared.logged)
+              range: Shared.range,
+              locked: Shared.locked,
+              winOpen: Shared.winOpen,
+              sunOpen: Shared.sunOpen,
+              engineOn: Shared.engineOn,
+              addr: Shared.addr,
+              tpFL: Shared.tpFL, tpFR: Shared.tpFR,
+              tpRL: Shared.tpRL, tpRR: Shared.tpRR,
+              updated: Shared.updated,
+              logged: Shared.logged,
+              groupUsable: Shared.groupUsable)
     }
 }
 
 // MARK: - 视图
+
 struct CaLiteWidgetEntryView: View {
     var entry: Entry
     @Environment(\.widgetFamily) var family
 
-    private let blue = Color(red: 47/255, green: 111/255, blue: 181/255)
-    private let green = Color(red: 47/255, green: 158/255, blue: 104/255)
-    private let red = Color(red: 214/255, green: 69/255, blue: 69/255)
-    private let txt = Color(red: 26/255, green: 30/255, blue: 36/255)
-    private let muted = Color(red: 123/255, green: 133/255, blue: 146/255)
-    private let faint = Color(red: 152/255, green: 162/255, blue: 175/255)
+    private let blue = Color(red: 0x2F/255, green: 0x6F/255, blue: 0xB5/255)
+    private let green = Color(red: 0x2F/255, green: 0x9E/255, blue: 0x68/255)
+    private let red = Color(red: 0xE5/255, green: 0x39/255, blue: 0x35/255)
+    private let txt = Color(red: 0x1B/255, green: 0x3A/255, blue: 0x6B/255)
+    private let muted = Color(red: 0x6E/255, green: 0x7A/255, blue: 0x8A/255)
+    private let faint = Color(red: 0x8A/255, green: 0x94/255, blue: 0xA3/255)
 
     var body: some View {
         Group {
             if !entry.logged {
-                notLoggedView
+                notLogged
             } else {
                 switch family {
                 case .systemSmall: smallView
@@ -188,171 +193,221 @@ struct CaLiteWidgetEntryView: View {
                 }
             }
         }
-        .widgetBackground(Color(red: 243/255, green: 246/255, blue: 250/255))
+        .widgetBackground(
+            LinearGradient(colors: [Color.white,
+                                    Color(red: 0xE8/255, green: 0xF0/255, blue: 0xFA/255)],
+                           startPoint: .topLeading, endPoint: .bottomTrailing)
+        )
+        // 整块点击打开 App（不在 widget 内控车）
+        .widgetURL(URL(string: "calite://open"))
     }
 
-    /// 没登录 / App Group 拿不到凭据时的占位
-    private var notLoggedView: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "car.fill")
-                .font(.system(size: 24))
-                .foregroundColor(blue.opacity(0.45))
-            Text("打开 CA Lite 登录")
+    // 未登录 / App Group 不可用
+    private var notLogged: some View {
+        VStack(spacing: 6) {
+            Image(systemName: entry.groupUsable ? "car.fill" : "exclamationmark.triangle.fill")
+                .font(.system(size: 22))
+                .foregroundColor(entry.groupUsable ? blue.opacity(0.5) : red.opacity(0.8))
+            Text(entry.groupUsable ? "打开 CA Lite 登录" : "App Group 不可用")
                 .font(.system(size: 11.5, weight: .medium))
                 .foregroundColor(muted)
+                .multilineTextAlignment(.center)
+            Text(entry.groupUsable ? "点一下进入 App" : "换 TrollStore 安装或补签名")
+                .font(.system(size: 9))
+                .foregroundColor(faint)
+                .multilineTextAlignment(.center)
         }
+        .padding(8)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    // 小尺寸：只放油量 + 续航
+    // 小尺寸
     private var smallView: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 4) {
-                Circle().fill(entry.online ? green : faint).frame(width: 5, height: 5)
-                Text(entry.carName).font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(txt).lineLimit(1)
-                Spacer()
-                Image(entry.carImage)
-                    .resizable().scaledToFit().frame(height: 20)
+                Circle().fill(entry.locked ? green : red)
+                    .frame(width: 5, height: 5)
+                Text(entry.carName)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(txt)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                Spacer(minLength: 0)
             }
+
             Spacer(minLength: 0)
+
+            Image(entry.carImage)
+                .resizable()
+                .scaledToFit()
+                .frame(maxWidth: .infinity)
+                .frame(height: 40)
+
             HStack(alignment: .firstTextBaseline, spacing: 2) {
-                Text(entry.range).font(.system(size: 26, weight: .bold)).foregroundColor(txt)
-                Text("km").font(.system(size: 10)).foregroundColor(muted)
-            }
-            HStack(spacing: 4) {
-                Image(systemName: entry.locked ? "lock.fill" : "lock.open.fill")
+                Text(entry.range)
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundColor(txt)
+                Text("km")
                     .font(.system(size: 9))
-                    .foregroundColor(entry.locked ? green : red)
-                Text(entry.locked ? "已锁车" : "未锁车")
-                    .font(.system(size: 9.5)).foregroundColor(entry.locked ? green : red)
-                Spacer()
+                    .foregroundColor(muted)
             }
-            HStack(spacing: 4) {
-                Image(systemName: entry.anyOpen ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
-                    .font(.system(size: 9))
-                    .foregroundColor(entry.anyOpen ? red : green)
-                Text(entry.anyOpen ? "车窗天窗有开启" : "车窗天窗全关")
-                    .font(.system(size: 9.5)).foregroundColor(entry.anyOpen ? red : green)
-                Spacer()
-            }
+            Text("剩余续航")
+                .font(.system(size: 8.5))
+                .foregroundColor(faint)
         }
-        .padding(12)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
     }
 
-    // 中尺寸：加三个指标 + 快捷按钮
+    // 中尺寸
     private var mediumView: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 5) {
-                Circle().fill(entry.online ? green : faint).frame(width: 5, height: 5)
-                Text(entry.carName).font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(txt).lineLimit(1)
+                Text(entry.carName)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(txt)
+                    .lineLimit(1)
                 if !entry.modelTitle.isEmpty {
                     Text(entry.modelTitle)
-                        .font(.system(size: 9)).foregroundColor(muted).lineLimit(1)
+                        .font(.system(size: 9))
+                        .foregroundColor(faint)
+                        .lineLimit(1)
                 }
-                Spacer()
-                Text(entry.online ? "在线" : "离线")
-                    .font(.system(size: 9)).foregroundColor(faint)
+                Spacer(minLength: 0)
+                statusTag
+            }
+
+            HStack(alignment: .center, spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(alignment: .firstTextBaseline, spacing: 3) {
+                        Text(entry.range)
+                            .font(.system(size: 32, weight: .bold))
+                            .foregroundColor(txt)
+                        Text("km")
+                            .font(.system(size: 10))
+                            .foregroundColor(muted)
+                    }
+                    Text("剩余续航")
+                        .font(.system(size: 9))
+                        .foregroundColor(faint)
+                }
+                Spacer(minLength: 0)
                 Image(entry.carImage)
-                    .resizable().scaledToFit().frame(height: 30)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(height: 54)
             }
 
-            HStack(alignment: .top, spacing: 0) {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("门锁").font(.system(size: 9)).foregroundColor(faint)
-                    HStack(alignment: .firstTextBaseline, spacing: 2) {
-                        Text(entry.locked ? "已锁" : "未锁")
-                            .font(.system(size: 22, weight: .bold))
-                            .foregroundColor(entry.locked ? green : red)
-                    }
-                }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 1) {
-                    Text("续航").font(.system(size: 9)).foregroundColor(faint)
-                    HStack(alignment: .firstTextBaseline, spacing: 2) {
-                        Text(entry.range).font(.system(size: 24, weight: .bold)).foregroundColor(blue)
-                        Text("km").font(.system(size: 9)).foregroundColor(muted)
-                    }
-                }
-            }
+            Divider().opacity(0.5)
 
             HStack(spacing: 0) {
-                miniStat("总里程", entry.odo, "km")
-                divider
-                miniStat("电压", entry.voltage, "V")
-                divider
-                miniStat("门窗", entry.anyOpen ? "有开" : "全关", "")
-            }
-
-            // 快捷控车（点击打开 App 对应操作，Widget 内不能直接发请求）
-            HStack(spacing: 6) {
-                quickBtn("锁车", "lock.fill", "LockDoor")
-                quickBtn("解锁", "lock.open.fill", "UnLockDoor")
-                quickBtn("闪灯", "lightbulb.fill", "FlashLight")
+                miniStat("车锁", entry.locked ? "已锁" : "未锁",
+                         entry.locked ? green : red)
+                miniDivider
+                miniStat("车窗", entry.winOpen ? "未关" : "已关",
+                         entry.winOpen ? red : green)
+                miniDivider
+                miniStat("天窗", entry.sunOpen ? "未关" : "已关",
+                         entry.sunOpen ? red : green)
+                miniDivider
+                miniStat("更新", shortTime, faint)
             }
         }
-        .padding(12)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
     }
 
-    // 大尺寸：中尺寸 + 胎压四角
+    // 大尺寸
     private var largeView: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             mediumView
+
             Divider()
+
             HStack(spacing: 0) {
-                miniStat("外温", Shared.str("w_out"), "°C")
-                divider
-                miniStat("胎压左前", Shared.str("w_lf"), "kPa")
-                divider
-                miniStat("胎压右前", Shared.str("w_rf"), "kPa")
+                tyre("左前", entry.tpFL)
+                miniDivider
+                tyre("右前", entry.tpFR)
+                miniDivider
+                tyre("左后", entry.tpRL)
+                miniDivider
+                tyre("右后", entry.tpRR)
             }
-            Text("更新于 \(fmt(entry.updated))")
-                .font(.system(size: 8)).foregroundColor(faint)
+
+            if !entry.addr.isEmpty {
+                HStack(spacing: 4) {
+                    Image(systemName: "location.fill")
+                        .font(.system(size: 8))
+                        .foregroundColor(blue)
+                    Text(entry.addr)
+                        .font(.system(size: 9))
+                        .foregroundColor(muted)
+                        .lineLimit(1)
+                }
+            }
+
+            Text("点一下打开 CA Lite")
+                .font(.system(size: 8))
+                .foregroundColor(faint)
         }
-        .padding(12)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
     }
 
-    private var divider: some View {
-        Rectangle().fill(Color(red: 230/255, green: 235/255, blue: 241/255))
-            .frame(width: 1, height: 24)
+    private var statusTag: some View {
+        Text(entry.locked ? "已锁车" : "未锁车")
+            .font(.system(size: 9, weight: .medium))
+            .foregroundColor(entry.locked ? green : red)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background((entry.locked ? green : red).opacity(0.12))
+            .clipShape(Capsule())
     }
 
-    private func miniStat(_ t: String, _ v: String, _ u: String) -> some View {
-        VStack(spacing: 1) {
-            HStack(alignment: .firstTextBaseline, spacing: 1) {
-                Text(v).font(.system(size: 11.5, weight: .semibold)).foregroundColor(txt)
-                if !u.isEmpty { Text(u).font(.system(size: 8)).foregroundColor(faint) }
-            }
-            Text(t).font(.system(size: 8)).foregroundColor(faint)
+    private func miniStat(_ title: String, _ value: String, _ color: Color) -> some View {
+        VStack(spacing: 2) {
+            Text(value)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(color)
+            Text(title)
+                .font(.system(size: 8))
+                .foregroundColor(faint)
         }
         .frame(maxWidth: .infinity)
     }
 
-    private func quickBtn(_ t: String, _ icon: String, _ cmd: String) -> some View {
-        Link(destination: URL(string: "calite://action?cmd=\(cmd)")!) {
-            VStack(spacing: 2) {
-                Image(systemName: icon).font(.system(size: 12))
-                Text(t).font(.system(size: 8.5))
-            }
-            .foregroundColor(blue)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 6)
-            .background(blue.opacity(0.08))
-            .clipShape(RoundedRectangle(cornerRadius: 7))
+    private func tyre(_ pos: String, _ v: Int) -> some View {
+        let warn = v > 0 && (v < 200 || v > 280)
+        return VStack(spacing: 2) {
+            Text(v > 0 ? "\(v)" : "--")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(warn ? red : txt)
+            Text(pos)
+                .font(.system(size: 8))
+                .foregroundColor(faint)
         }
+        .frame(maxWidth: .infinity)
     }
 
-    private func fmt(_ d: Date) -> String {
-        let f = DateFormatter(); f.dateFormat = "HH:mm"
-        return f.string(from: d)
+    private var miniDivider: some View {
+        Rectangle()
+            .fill(Color(red: 0xE3/255, green: 0xEA/255, blue: 0xF3/255))
+            .frame(width: 1, height: 22)
+    }
+
+    private var shortTime: String {
+        guard entry.updated.timeIntervalSince1970 > 0 else { return "--" }
+        let f = DateFormatter()
+        f.dateFormat = "MM.dd HH:mm"
+        return f.string(from: entry.updated)
     }
 }
 
 // MARK: - Widget 背景兼容
+
 extension View {
     @ViewBuilder
-    func widgetBackground(_ bg: Color) -> some View {
+    func widgetBackground<S: ShapeStyle>(_ bg: S) -> some View {
         if #available(iOS 17.0, *) {
             containerBackground(bg, for: .widget)
         } else {
@@ -361,15 +416,16 @@ extension View {
     }
 }
 
-// MARK: - Widget 声明
+// MARK: - 声明
+
 @main
 struct CaLiteWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "CaLiteWidget", provider: Provider()) { entry in
             CaLiteWidgetEntryView(entry: entry)
         }
-        .configurationDisplayName("车况")
-        .description("油量、续航、门窗状态，支持快捷控车")
+        .configurationDisplayName("CA Lite 车况")
+        .description("车牌、续航、门锁、胎压；点一下打开 App")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }
 }

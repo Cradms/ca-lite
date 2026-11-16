@@ -1240,47 +1240,64 @@ final class CarAPI {
         }
     }
 
-    /// 从车况里取「车机上报时间」；各车型字段名不统一，按常见名 + 含 time 的键兜底
+    /// 从车况里取「车机上报时间」
+    ///
+    /// 只认白名单字段，且必须落在合理区间（2015-01-01 ~ 现在+30 天），
+    /// 否则 drivingTime（行驶秒数）之类的数字会被误当成 1970 年的时间戳。
     static func vehicleTime(_ d: [String: Any]) -> Date? {
         let keys = ["terminalTime", "lastUpdateTime", "updateTime", "reportTime",
                     "gpsTime", "collectTime", "dataTime", "carTime", "positionTime",
-                    "sampleTime", "uploadTime", "refreshTime"]
+                    "sampleTime", "uploadTime", "refreshTime", "lastReportTime",
+                    "terminalTimestamp", "updateTimestamp"]
         for k in keys {
             if let t = parseAnyTime(d[k]) { return t }
-        }
-        for (k, v) in d where k.lowercased().contains("time") {
-            if let t = parseAnyTime(v) { return t }
         }
         return nil
     }
 
-    /// 支持 "yyyy-MM-dd HH:mm:ss" / ISO / 秒、毫秒时间戳 / yyyyMMddHHmmss
+    /// 时间合法性：2015-01-01 之后，且不超过现在 30 天
+    static func plausible(_ d: Date) -> Bool {
+        let t = d.timeIntervalSince1970
+        let lower = 1_420_070_400.0            // 2015-01-01
+        let upper = Date().timeIntervalSince1970 + 30 * 86400
+        return t >= lower && t <= upper
+    }
+
+    /// 支持 "yyyy-MM-dd HH:mm:ss" / ISO / 秒毫秒时间戳 / yyyyMMddHHmmss
+    /// 解析结果必须通过 plausible() 校验，否则返回 nil
     static func parseAnyTime(_ v: Any?) -> Date? {
-        if let n = v as? Double, n > 1_000_000_000 {
-            return Date(timeIntervalSince1970: n > 1e12 ? n / 1000 : n)
+        func check(_ d: Date?) -> Date? {
+            guard let d = d, plausible(d) else { return nil }
+            return d
         }
-        if let n = v as? Int, n > 1_000_000_000 {
+
+        if let n = v as? Double {
+            return check(Date(timeIntervalSince1970: n > 1e12 ? n / 1000 : n))
+        }
+        if let n = v as? Int {
             let d = Double(n)
-            return Date(timeIntervalSince1970: d > 1e12 ? d / 1000 : d)
+            return check(Date(timeIntervalSince1970: d > 1e12 ? d / 1000 : d))
         }
         guard let str = v as? String else { return nil }
         var text = str.trimmingCharacters(in: .whitespacesAndNewlines)
         if text.isEmpty { return nil }
-        if let n = Double(text), n > 1_000_000_000 {
-            return Date(timeIntervalSince1970: n > 1e12 ? n / 1000 : n)
+
+        if let n = Double(text) {
+            return check(Date(timeIntervalSince1970: n > 1e12 ? n / 1000 : n))
         }
+
         text = text.replacingOccurrences(of: "T", with: " ")
         text = text.replacingOccurrences(of: "/", with: "-")
         if let dot = text.firstIndex(of: "."), text.count > 19 {
             text = String(text[text.startIndex..<dot])
         }
-        let formats = ["yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm", "yyyyMMddHHmmss"]
+        let formats = ["yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm", "yyyyMMddHHmmss", "yyyyMMddHHmm"]
         for f in formats {
             let df = DateFormatter()
             df.locale = Locale(identifier: "en_US_POSIX")
             df.timeZone = TimeZone.current
             df.dateFormat = f
-            if let dt = df.date(from: text) { return dt }
+            if let dt = df.date(from: text) { return check(dt) }
         }
         return nil
     }
