@@ -1,5 +1,4 @@
 import SwiftUI
-import WidgetKit
 
 /// 首页
 ///
@@ -462,12 +461,6 @@ struct CarHomeView: View {
                 .font(.system(size: 10))
                 .foregroundColor(Color(hex: 0x8A94A3))
                 .multilineTextAlignment(.center)
-            if !AppGroupStore.groupAvailable {
-                Text("App Group 不可用：小组件读不到数据，检查签名里的 group.com.yg.calite")
-                    .font(.system(size: 9.5))
-                    .foregroundColor(Color(hex: 0xE53935))
-                    .multilineTextAlignment(.center)
-            }
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 8)

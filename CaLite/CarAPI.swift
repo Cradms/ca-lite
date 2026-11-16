@@ -4,11 +4,8 @@ import UIKit
 
 /// 共享偏好（App Group，小组件也要读）
 enum Prefs {
-    static let group = "group.com.yg.calite"
-
-    static var d: UserDefaults {
-        UserDefaults(suiteName: group) ?? .standard
-    }
+    /// 已移除小组件：数据存本机 standard，不再依赖 App Group
+    static var d: UserDefaults { UserDefaults.standard }
 
     static func s(_ k: String, _ def: String = "") -> String {
         (d.string(forKey: k) ?? def)

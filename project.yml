@@ -5,6 +5,8 @@ options:
     iOS: "16.0"
   createIntermediateGroups: true
 
+# 无小组件版本：给自签（AltStore / Sideloadly / 爱思）用。
+# 自签会重签 .appex 并丢掉 App Group，小组件必然失效，所以这个版本直接不带扩展。
 targets:
   CaLite:
     type: application
@@ -21,29 +23,6 @@ targets:
         SWIFT_VERSION: "5.0"
         TARGETED_DEVICE_FAMILY: "1"
         CODE_SIGN_ENTITLEMENTS: CaLite/CaLite.entitlements
-        CODE_SIGN_IDENTITY: ""
-        CODE_SIGNING_REQUIRED: "NO"
-        CODE_SIGNING_ALLOWED: "NO"
-        ENABLE_BITCODE: "NO"
-    dependencies:
-      - target: CaLiteWidget
-        embed: true
-
-  CaLiteWidget:
-    type: app-extension
-    platform: iOS
-    sources:
-      - path: CaLiteWidget
-    settings:
-      base:
-        INFOPLIST_FILE: CaLiteWidget/Info.plist
-        PRODUCT_BUNDLE_IDENTIFIER: com.yg.calite.widget
-        PRODUCT_NAME: CaLiteWidget
-        MARKETING_VERSION: "1.0.0"
-        CURRENT_PROJECT_VERSION: "1"
-        SWIFT_VERSION: "5.0"
-        TARGETED_DEVICE_FAMILY: "1"
-        CODE_SIGN_ENTITLEMENTS: CaLiteWidget/CaLiteWidget.entitlements
         CODE_SIGN_IDENTITY: ""
         CODE_SIGNING_REQUIRED: "NO"
         CODE_SIGNING_ALLOWED: "NO"

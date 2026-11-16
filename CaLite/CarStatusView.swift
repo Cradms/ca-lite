@@ -1,15 +1,10 @@
 import SwiftUI
-import WidgetKit
 
 /// 车辆状况（对齐 car-ios 的车辆状态页：续航 / 油量 / 里程 / 电压 / 外温 / 胎压 / 门窗 / 位置）
 struct CarStatusView: View {
     @State private var st = CarState()
     @State private var loading = true
     @State private var showMap = false
-    @State private var widgetCount = -1
-    @State private var groupOK = true
-    @State private var hasToken = false
-    @State private var hasCarId = false
     @State private var showRaw = false
 
     private let api = CarAPI.shared
@@ -27,7 +22,6 @@ struct CarStatusView: View {
                     locationCard
                     timeCard
                     rawCard
-                    widgetCard
                 }
             }
             .padding(.horizontal, 14)
@@ -44,10 +38,7 @@ struct CarStatusView: View {
                 }
             }
         }
-        .onAppear {
-            load()
-            checkWidget()
-        }
+        .onAppear(perform: load)
         .sheet(isPresented: $showMap) {
             NavigationView { LocationView() }
         }
@@ -353,82 +344,6 @@ struct CarStatusView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.white.opacity(0.95))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-    }
-
-    // MARK: 小组件诊断
-
-    private var widgetCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("桌面小组件")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(Color(hex: 0x6E7A8A))
-                Spacer()
-                Text(widgetCount < 0 ? "检测中…"
-                     : (widgetCount > 0 ? "已添加 \(widgetCount) 个" : "未添加"))
-                    .font(.system(size: 11))
-                    .foregroundColor(widgetCount > 0 ? Color(hex: 0x2F9E68) : Color(hex: 0x8A94A3))
-            }
-
-            line("App Group", groupOK ? "可用" : "不可用（自签丢了 entitlements）",
-                 groupOK ? Color(hex: 0x2F9E68) : Color(hex: 0xE53935))
-            line("登录凭据同步", (hasToken && hasCarId) ? "已写入" : "缺失（先刷新一次首页）",
-                 (hasToken && hasCarId) ? Color(hex: 0x2F9E68) : Color(hex: 0xE53935))
-
-            Button {
-                AppGroupStore.syncCredentials()
-                AppGroupStore.syncFromPrefs()
-                WidgetCenter.shared.reloadAllTimelines()
-                checkWidget()
-            } label: {
-                Text("刷新小组件")
-                    .font(.system(size: 12.5, weight: .medium))
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 38)
-                    .background(KH.blue)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            }
-            .buttonStyle(.plain)
-
-            Text("若这里显示「未添加」但桌面找不到小组件：自签工具（AltStore/Sideloadly）只重签主 App，Widget 扩展会失效，需要用 TrollStore 安装或手动给 .appex 签名。")
-                .font(.system(size: 10))
-                .foregroundColor(Color(hex: 0x8A94A3))
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.95))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-    }
-
-    private func line(_ title: String, _ value: String, _ color: Color) -> some View {
-        HStack {
-            Text(title)
-                .font(.system(size: 12))
-                .foregroundColor(Color(hex: 0x2B3A4F))
-            Spacer()
-            Text(value)
-                .font(.system(size: 11.5))
-                .foregroundColor(color)
-                .multilineTextAlignment(.trailing)
-        }
-    }
-
-    private func checkWidget() {
-        groupOK = AppGroupStore.groupAvailable
-        hasToken = !Prefs.s("w_token").isEmpty
-        hasCarId = !Prefs.s("w_cid").isEmpty
-        if #available(iOS 14.0, *) {
-            WidgetCenter.shared.getCurrentConfigurations { result in
-                DispatchQueue.main.async {
-                    switch result {
-                    case .success(let list): widgetCount = list.count
-                    case .failure: widgetCount = 0
-                    }
-                }
-            }
-        }
     }
 
     // MARK: 加载

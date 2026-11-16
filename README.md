@@ -1,24 +1,24 @@
 # CA Lite
 
-长安车控 iOS 原生客户端（SwiftUI + WidgetKit），按 **长安车控 4.5.6 小组件版** 的
+长安车控 iOS 原生客户端（SwiftUI），按 **长安车控 4.5.6 小组件版** 的
 `Api.java` 协议复刻。轻量、不依赖自建服务器、无 WebView。
 
 - 首页按 Android `HomeActivity` **1:1 复刻**：车辆卡（车名 + 剩余续航 + 蓝牙钥匙/刷新）、
   状态两行（发动机 · 车锁 / 逐项车窗 · 天窗 · 后备箱）、位置卡、全宽蓝牙钥匙按钮、
   全景照片·行车轨迹双列、7 组控车按钮（52pt 白底圆角 10）、footer 提示
 - 车况 / 控车 / 位置 / 轨迹 / 记录 / 保养 / 消息，单 App 完成
-- 桌面小组件：按车型显示车模图 + 续航 + 门锁，支持快捷控车
+- 单 target 工程，直接自签安装（不依赖 App Group / 付费账号）
 - 车型归一化：车名/车架号 → 12 个车型代码 → 对应车模图
 
 ## 工程结构
 
 ```
 ca-lite/
-├── project.yml               XcodeGen 定义（CaLite + CaLiteWidget）
+├── project.yml               XcodeGen 定义（单 target：CaLite）
 ├── CaLite/
 │   ├── CarAPI.swift          接口层（登录/车况/控车/轨迹/记录/照片）
 │   ├── CarModel.swift        车型归一化 + 中文名
-│   ├── AppGroupStore.swift   App → 小组件共享状态
+│   ├── AppGroupStore.swift   本地缓存同步
 │   ├── RSACrypto.swift       RSA-OAEP(SHA256)，SPKI → PKCS#1
 │   ├── CarHomeView.swift     首页
 │   ├── LoginView.swift       短信验证码登录 + 控车码
@@ -27,7 +27,7 @@ ca-lite/
 │   ├── FuelView / MaintainView / MoreView
 │   ├── RootView / AppDelegate
 │   └── Assets.xcassets       13 张车型图 + 通用车模图
-└── CaLiteWidget/             小组件（同名车型图副本）
+
 ```
 
 标识符：
@@ -97,33 +97,16 @@ FlashLight / RemoteSearchCar / Whistle`。
 - 车况字段随车型/固件不同而缺失，界面按实际返回显示，空值 `--`
 - 未在实车逐条验证，接口解析带多字段名与多层 data 兜底
 
-## 签名（Widget 能不能用就看这一步）
+## 安装
 
-小组件靠 **App Group** 和主 App 共享数据：`group.com.yg.calite`。
-App Group 属于付费开发者账号能力，**免费 Apple ID 建不了**，所以：
+本工程**不含小组件**，因此不需要付费开发者账号，也没有 App Group 依赖：
 
-| 安装方式 | 主 App | 小组件 |
+| 方式 | 需要账号 | 说明 |
 | --- | --- | --- |
-| Codemagic 已签名 IPA（付费账号） | ✅ | ✅ |
-| Xcode 免费账号直连（7 天） | ✅ | ❌ 读不到数据 |
-| AltStore / Sideloadly 自签 | ✅ | ❌ `.appex` 重签后失效 |
-| TrollStore 安装未签名 IPA | ✅ | ✅ 保留 entitlements |
+| AltStore / Sideloadly | 免费 Apple ID | 7 天有效，AltServer 可自动续签 |
+| 爱思助手 / 其他自签工具 | 免费 Apple ID | 同上 |
+| TrollStore | 不需要 | 不重签，长期有效 |
+| 自己证书签名 | 付费账号 | 可长期分发 |
 
-### 出已签名 IPA（付费账号）
-
-1. **developer.apple.com → Identifiers**
-   - 新建 App ID `com.yg.calite`，Capabilities 勾 **App Groups**
-   - 新建 App ID `com.yg.calite.widget`，同样勾 **App Groups**
-2. **App Groups** → 新建 `group.com.yg.calite` → 回到两个 App ID 里勾上这个组
-3. **Certificates** → 建 `Apple Distribution` → 下载后在钥匙串里导出 `.p12`（设个密码）
-4. **Profiles** → 建两个 **Ad Hoc** profile：
-   - 一个绑 `com.yg.calite`
-   - 一个绑 `com.yg.calite.widget`
-   - 都选同一张证书 + 勾上你设备的 UDID
-5. **Codemagic → 项目 → Code signing identities**：上传 1 个 `.p12` + 2 个 `.mobileprovision`
-6. Codemagic 选 **CA Lite · 已签名 IPA** → Start
-
-产物在 `build/ios/ipa/`，直接 AirDrop / 爱思助手装。
-
-> 设备 UDID 获取：手机连 Mac → 访达 → 设备信息（点两下版本号显示 UDID），
-> 或 https://udid.tech 用 Safari 装描述文件读取。
+> 之前版本带 WidgetKit 小组件，但自签会重签 `.appex` 并丢掉 App Group，
+> 小组件必然读不到数据，所以这一版直接移除了小组件 target。
