@@ -63,16 +63,19 @@ workflows:
     artifacts:
       - CaLite-unsigned.ipa
 
-  # ---------------- 已签名：在 Codemagic 上传 p12 + profile 后用 ----------------
+  # ---------------- 已签名：手动上传 p12 + 两个 profile 后跑这条 ----------------
+  # 前置：
+  #   1) Apple Developer（付费账号）建 App ID：com.yg.calite 与 com.yg.calite.widget
+  #   2) App Groups 建 group.com.yg.calite，并在两个 App ID 里启用
+  #   3) Certificates 生成 Apple Distribution，导出 .p12
+  #   4) Profiles 建两个 Ad Hoc profile（各绑一个 App ID，勾选设备）
+  #   5) Codemagic → 项目 → Code signing identities 上传 1 个 p12 + 2 个 mobileprovision
   ca-lite-signed:
     name: CA Lite · 已签名 IPA
     instance_type: mac_mini_m2
     max_build_duration: 40
     environment:
       xcode: latest
-      ios_signing:
-        distribution_type: ad_hoc
-        bundle_identifier: com.yg.calite
       vars:
         BUNDLE_ID: com.yg.calite
     scripts:
@@ -81,14 +84,18 @@ workflows:
 
       - name: 生成工程
         script: |
-          sed -i '' "s/PRODUCT_BUNDLE_IDENTIFIER: .*/PRODUCT_BUNDLE_IDENTIFIER: $BUNDLE_ID/" project.yml
           xcodegen generate
+          grep -n "PRODUCT_BUNDLE_IDENTIFIER" project.yml
 
-      - name: 应用签名配置
+      - name: 导入证书与描述文件
         script: |
+          set -eo pipefail
           keychain initialize
           keychain add-certificates
+          # 为所有 target（含 CaLiteWidget）按 bundle id 匹配 profile
           xcode-project use-profiles
+          echo "---- 已应用的签名设置 ----"
+          xcode-project list-profiles 2>/dev/null || true
 
       - name: 出签名 IPA
         script: |

@@ -96,3 +96,34 @@ FlashLight / RemoteSearchCar / Whistle`。
 - 蓝牙钥匙（Android 端 `BleKeyClient.java` 的 BLE GATT 协议）未移植，需车端密钥与实车抓包
 - 车况字段随车型/固件不同而缺失，界面按实际返回显示，空值 `--`
 - 未在实车逐条验证，接口解析带多字段名与多层 data 兜底
+
+## 签名（Widget 能不能用就看这一步）
+
+小组件靠 **App Group** 和主 App 共享数据：`group.com.yg.calite`。
+App Group 属于付费开发者账号能力，**免费 Apple ID 建不了**，所以：
+
+| 安装方式 | 主 App | 小组件 |
+| --- | --- | --- |
+| Codemagic 已签名 IPA（付费账号） | ✅ | ✅ |
+| Xcode 免费账号直连（7 天） | ✅ | ❌ 读不到数据 |
+| AltStore / Sideloadly 自签 | ✅ | ❌ `.appex` 重签后失效 |
+| TrollStore 安装未签名 IPA | ✅ | ✅ 保留 entitlements |
+
+### 出已签名 IPA（付费账号）
+
+1. **developer.apple.com → Identifiers**
+   - 新建 App ID `com.yg.calite`，Capabilities 勾 **App Groups**
+   - 新建 App ID `com.yg.calite.widget`，同样勾 **App Groups**
+2. **App Groups** → 新建 `group.com.yg.calite` → 回到两个 App ID 里勾上这个组
+3. **Certificates** → 建 `Apple Distribution` → 下载后在钥匙串里导出 `.p12`（设个密码）
+4. **Profiles** → 建两个 **Ad Hoc** profile：
+   - 一个绑 `com.yg.calite`
+   - 一个绑 `com.yg.calite.widget`
+   - 都选同一张证书 + 勾上你设备的 UDID
+5. **Codemagic → 项目 → Code signing identities**：上传 1 个 `.p12` + 2 个 `.mobileprovision`
+6. Codemagic 选 **CA Lite · 已签名 IPA** → Start
+
+产物在 `build/ios/ipa/`，直接 AirDrop / 爱思助手装。
+
+> 设备 UDID 获取：手机连 Mac → 访达 → 设备信息（点两下版本号显示 UDID），
+> 或 https://udid.tech 用 Safari 装描述文件读取。
