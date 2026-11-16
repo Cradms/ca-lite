@@ -790,8 +790,12 @@ final class CarAPI {
         }
 
         // 车机上报时间（不是本机刷新时间）
-        if let tt = d["terminalTime"] as? String, !tt.isEmpty {
-            Prefs.set(tt, "c_traw")          // 原始值，界面上显示出来便于核对
+        var terminalRaw = ""
+        if let tt = d["terminalTime"] as? String { terminalRaw = tt }
+        else if let n = d["terminalTime"] as? Double, n > 0 { terminalRaw = String(format: "%.0f", n) }
+        else if let n = d["terminalTime"] as? Int, n > 0 { terminalRaw = "\(n)" }
+        if !terminalRaw.isEmpty {
+            Prefs.set(terminalRaw, "c_traw")     // 原文，界面直接展示（car-ios 就是这么做的）
         }
         if let vt = Self.vehicleTime(d) {
             Prefs.setl(Int64(vt.timeIntervalSince1970), "c_vtime")
@@ -882,6 +886,7 @@ final class CarAPI {
             let vtRaw = Int(Prefs.l("c_vtime"))
             let vtValid = Stamp.isValid(Double(vtRaw))
             out["vehicleTime"] = vtValid ? vtRaw : 0
+            out["terminalRaw"] = Prefs.s("c_traw")
             out["doorFL"] = Prefs.b("c_door_fl"); out["doorFR"] = Prefs.b("c_door_fr")
             out["doorRL"] = Prefs.b("c_door_rl"); out["doorRR"] = Prefs.b("c_door_rr")
             out["addr"] = Prefs.s("c_addr")
@@ -1263,6 +1268,48 @@ final class CarAPI {
             if err == nil { _ = self.fetchStatus() }
             DispatchQueue.main.async { done(err == nil, err ?? "温度已设为 \(v)°C") }
         }
+    }
+
+    /// 把 terminalTime 原文切成可读时间（car-ios 用 suffix(8)，这里做完整版）
+    ///
+    /// 支持 "2026-11-16 15:15:38" / "2026/11/16 15:15:38" / "20261116151538"
+    /// 不做 Date 解析，避免时区/单位问题
+    static func prettyTerminal(_ raw: String) -> String {
+        let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if t.isEmpty { return "" }
+
+        // 形如 2026-11-16 15:15:38 → 11-16 15:15
+        if t.contains("-") || t.contains("/") {
+            let s = t.replacingOccurrences(of: "/", with: "-")
+            let parts = s.split(separator: " ")
+            if parts.count >= 2 {
+                let datePart = String(parts[0])          // 2026-11-16
+                let timePart = String(parts[1])          // 15:15:38
+                let dp = datePart.split(separator: "-")
+                if dp.count == 3 {
+                    let mm = dp[1], dd = dp[2]
+                    let tp = timePart.split(separator: ":")
+                    if tp.count >= 2 {
+                        return "\(mm)-\(dd) \(tp[0]):\(tp[1])"
+                    }
+                    return "\(mm)-\(dd)"
+                }
+            }
+            return s
+        }
+
+        // 形如 20261116151538
+        if t.count == 14, t.allSatisfy({ $0.isNumber }) {
+            let a = Array(t)
+            let mm = String(a[4...5]), dd = String(a[6...7])
+            let hh = String(a[8...9]), mi = String(a[10...11])
+            return "\(mm)-\(dd) \(hh):\(mi)"
+        }
+        // 10 位秒 / 13 位毫秒
+        if let n = Double(t), n > 1_000_000_000 {
+            return Stamp.text(n, format: "MM-dd HH:mm")
+        }
+        return t
     }
 
     /// 接口返回的多为相对路径，按源码 loadDataWithBaseURL 的做法补成绝对地址

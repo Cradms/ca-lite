@@ -189,24 +189,28 @@ struct CarStatusView: View {
 
     private var bodyCard: some View {
         VStack(spacing: 0) {
-            row("车锁", st.lockFL ? "已锁车" : "未锁车", st.lockFL ? okColor : badColor)
-            sep
-            row("车门", doorText, doorText == "全部关闭" ? okColor : badColor)
-            sep
-            row("车窗", winText, winText == "全部关闭" ? okColor : badColor)
-            sep
-            row("天窗", st.sunOpen ? "未关" : "已关", st.sunOpen ? badColor : okColor)
-            sep
-            row("后备箱", st.trunk ? "未关" : "已关", st.trunk ? badColor : okColor)
-            sep
-            row("发动机", st.engineOn ? "运行中" : "已熄火", st.engineOn ? Color(hex: 0x2F6FB5) : okColor)
-            sep
-            row("空调", st.airOn ? "开启" : "关闭", st.airOn ? Color(hex: 0x2F6FB5) : Color(hex: 0x8A94A3))
+            ForEach(Array(bodyItems.enumerated()), id: \.offset) { i, item in
+                row(item.0, item.1, item.2)
+                if i < bodyItems.count - 1 { sep }
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 4)
         .background(Color.white.opacity(0.95))
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    /// 车身状态行（数据驱动，避免 ViewBuilder 超过 10 个子视图）
+    private var bodyItems: [(String, String, Color)] {
+        [
+            ("车锁", st.lockFL ? "已锁车" : "未锁车", st.lockFL ? okColor : badColor),
+            ("车门", doorText, doorText == "全部关闭" ? okColor : badColor),
+            ("车窗", winText, winText == "全部关闭" ? okColor : badColor),
+            ("天窗", st.sunOpen ? "未关" : "已关", st.sunOpen ? badColor : okColor),
+            ("后备箱", st.trunk ? "未关" : "已关", st.trunk ? badColor : okColor),
+            ("发动机", st.engineOn ? "运行中" : "已熄火", st.engineOn ? Color(hex: 0x2F6FB5) : okColor),
+            ("空调", st.airOn ? "开启" : "关闭", st.airOn ? Color(hex: 0x2F6FB5) : Color(hex: 0x8A94A3))
+        ]
     }
 
     private var okColor: Color { Color(hex: 0x2F9E68) }
@@ -274,7 +278,7 @@ struct CarStatusView: View {
 
     private var timeCard: some View {
         VStack(spacing: 4) {
-            Text(st.vehicleTime > 0 ? "车辆上报时间" : "本机刷新时间")
+            Text((!st.terminalRaw.isEmpty || st.vehicleTime > 0) ? "车辆上报时间" : "本机刷新时间")
                 .font(.system(size: 10))
                 .foregroundColor(Color(hex: 0x8A94A3))
             Text(timeText)
@@ -294,6 +298,7 @@ struct CarStatusView: View {
     }
 
     private var timeText: String {
+        if !st.terminalRaw.isEmpty { return st.terminalRaw }
         let stamp = st.vehicleTime > 0 ? st.vehicleTime : st.updatedAt
         return Stamp.text(Double(stamp), format: "yyyy-MM-dd HH:mm:ss")
     }

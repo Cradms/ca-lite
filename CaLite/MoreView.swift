@@ -233,7 +233,7 @@ struct MoreView: View {
     private var maskedPhone: String {
         let p = api.phone
         guard p.count == 11 else { return p.isEmpty ? "未登录" : p }
-        return p.prefix(3) + "****" + p.suffix(4)
+        return "\(p.prefix(3))****\(p.suffix(4))"
     }
 
     private func fmtTime(_ d: Date) -> String {

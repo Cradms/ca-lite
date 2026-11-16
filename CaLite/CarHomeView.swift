@@ -220,9 +220,14 @@ struct CarHomeView: View {
     }
 
     /// 车辆上报时间优先；拿不到才退回本机刷新时间（并在前缀上区分）
-    private var isVehicleTime: Bool { st.vehicleTime > 0 }
+    private var isVehicleTime: Bool { !st.terminalRaw.isEmpty || st.vehicleTime > 0 }
 
+    /// 车机时间优先（直接用 terminalTime 原文切，car-ios 就是这么显示的）
     private var timeText: String {
+        if !st.terminalRaw.isEmpty {
+            let p = CarAPI.prettyTerminal(st.terminalRaw)
+            if !p.isEmpty { return p }
+        }
         let stamp = st.vehicleTime > 0 ? st.vehicleTime : st.updatedAt
         return Stamp.text(Double(stamp), format: "MM.dd HH:mm")
     }
@@ -653,6 +658,7 @@ struct CarState {
     var addr = ""
     var updatedAt = 0
     var vehicleTime = 0
+    var terminalRaw = ""
     var sunOpen = false
     var engineOn = false
     var airOn = false
@@ -704,6 +710,7 @@ struct CarState {
         outTemp = str("outTemp")
         fuel = str("fuel")
         vehicleTime = int("vehicleTime")
+        terminalRaw = (d["terminalRaw"] as? String) ?? ""
 
         doorFL = flag("doorFL"); doorFR = flag("doorFR")
         doorRL = flag("doorRL"); doorRR = flag("doorRR")
