@@ -372,6 +372,9 @@ struct BleKeyView: View {
                                         .font(.system(size: 11))
                                         .foregroundColor(d.rssi > -70 ? C.green : C.muted)
                                 }
+                                Text("id \(d.id.uuidString.prefix(8))")
+                                    .font(.system(size: 9, design: .monospaced))
+                                    .foregroundColor(C.faint.opacity(0.9))
                                 Text(d.adv)
                                     .font(.system(size: 9, design: .monospaced))
                                     .foregroundColor(C.faint)
