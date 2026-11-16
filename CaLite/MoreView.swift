@@ -1,32 +1,5 @@
 import SwiftUI
 
-// MARK: - 操作历史（本地）
-struct OpLog: Codable, Identifiable {
-    var id = UUID()
-    var cmd: String
-    var ok: Bool
-    var msg: String
-    var time: Date
-}
-
-enum OpLogStore {
-    private static let key = "op_logs_v1"
-    static func load() -> [OpLog] {
-        guard let d = UserDefaults.standard.data(forKey: key),
-              let r = try? JSONDecoder().decode([OpLog].self, from: d) else { return [] }
-        return r
-    }
-    static func append(_ l: OpLog) {
-        var list = load()
-        list.insert(l, at: 0)
-        if list.count > 100 { list = Array(list.prefix(100)) }
-        if let d = try? JSONEncoder().encode(list) {
-            UserDefaults.standard.set(d, forKey: key)
-        }
-    }
-    static func clear() { UserDefaults.standard.removeObject(forKey: key) }
-}
-
 // MARK: - 消息
 struct InfoMessage: Identifiable {
     let id = UUID()
@@ -151,7 +124,7 @@ struct MoreView: View {
                                     Text(l.cmd)
                                         .font(.system(size: 12)).foregroundColor(C.txt)
                                     Spacer()
-                                    Text(fmtTime(l.time))
+                                    Text(fmtTime(Date(timeIntervalSince1970: l.time)))
                                         .font(.system(size: 9.5)).foregroundColor(C.faint)
                                 }
                                 if i < min(9, logs.count - 1) {

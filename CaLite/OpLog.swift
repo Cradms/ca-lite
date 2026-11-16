@@ -14,15 +14,24 @@ enum OpLogStore {
 
     static func append(cmd: String, ok: Bool, msg: String) {
         var arr = load()
-        arr.insert(OpLog(cmd: cmd, ok: ok, msg: msg, time: Date().timeIntervalSince1970), at: 0)
-        if arr.count > 50 { arr = Array(arr.prefix(50)) }
+        let item = OpLog(cmd: cmd, ok: ok, msg: msg, time: Date().timeIntervalSince1970)
+        arr.insert(item, at: 0)
+        if arr.count > 50 {
+            arr = Array(arr.prefix(50))
+        }
         save(arr)
     }
 
     static func load() -> [OpLog] {
-        guard let raw = Prefs.s(key).data(using: .utf8),
-              let arr = try? JSONDecoder().decode([OpLog].self, from: raw) else { return [] }
-        return arr
+        let text = Prefs.s(key)
+        if text.isEmpty { return [] }
+        guard let raw = text.data(using: .utf8) else { return [] }
+        do {
+            let arr = try JSONDecoder().decode([OpLog].self, from: raw)
+            return arr
+        } catch {
+            return []
+        }
     }
 
     static func clear() {
@@ -30,8 +39,9 @@ enum OpLogStore {
     }
 
     private static func save(_ arr: [OpLog]) {
-        guard let d = try? JSONEncoder().encode(arr),
-              let s = String(data: d, encoding: .utf8) else { return }
-        Prefs.set(s, key)
+        let encoder = JSONEncoder()
+        guard let data = try? encoder.encode(arr) else { return }
+        guard let text = String(data: data, encoding: .utf8) else { return }
+        Prefs.set(text, key)
     }
 }
