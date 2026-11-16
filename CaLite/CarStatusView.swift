@@ -10,6 +10,7 @@ struct CarStatusView: View {
     @State private var groupOK = true
     @State private var hasToken = false
     @State private var hasCarId = false
+    @State private var showRaw = false
 
     private let api = CarAPI.shared
 
@@ -25,6 +26,7 @@ struct CarStatusView: View {
                     bodyCard
                     locationCard
                     timeCard
+                    rawCard
                     widgetCard
                 }
             }
@@ -293,6 +295,58 @@ struct CarStatusView: View {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd HH:mm:ss"
         return f.string(from: d)
+    }
+
+    // MARK: 原始车况（调试）
+
+    private var rawCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.15)) { showRaw.toggle() }
+            } label: {
+                HStack {
+                    Text("原始车况数据")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(Color(hex: 0x6E7A8A))
+                    Spacer()
+                    Text(showRaw ? "收起" : "展开")
+                        .font(.system(size: 11))
+                        .foregroundColor(Color(hex: 0x8A94A3))
+                    Image(systemName: showRaw ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 10))
+                        .foregroundColor(Color(hex: 0x8A94A3))
+                }
+            }
+            .buttonStyle(.plain)
+
+            if showRaw {
+                let raw = Prefs.s("c_raw")
+                ScrollView([.horizontal, .vertical]) {
+                    Text(raw.isEmpty ? "暂无数据，先点右上角刷新一次" : raw)
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundColor(Color(hex: 0x2B3A4F))
+                        .textSelection(.enabled)
+                }
+                .frame(maxHeight: 300)
+
+                Button {
+                    UIPasteboard.general.string = raw
+                } label: {
+                    Text("复制全部")
+                        .font(.system(size: 11.5))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 32)
+                        .background(Color(hex: 0x6E7A8A))
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white.opacity(0.95))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     // MARK: 小组件诊断

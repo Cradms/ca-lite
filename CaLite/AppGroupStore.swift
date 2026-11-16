@@ -38,6 +38,7 @@ enum AppGroupStore {
         defaults.set(Prefs.i("c_tp_rl"), forKey: "w_tp_rl")
         defaults.set(Prefs.i("c_tp_rr"), forKey: "w_tp_rr")
 
+        defaults.synchronize()
         WidgetCenter.shared.reloadAllTimelines()
     }
 
@@ -48,6 +49,8 @@ enum AppGroupStore {
         Prefs.set(api.mRefresh, "w_rt")
         Prefs.set(api.carId, "w_cid")
         Prefs.set(api.controlPin, "w_pin")
+        Prefs.seti(api.isLoggedIn ? 1 : 0, "w_logged")
+        Prefs.d.synchronize()
     }
 
     // MARK: - 读取（小组件侧）

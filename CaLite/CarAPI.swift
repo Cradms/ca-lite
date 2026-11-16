@@ -835,6 +835,13 @@ final class CarAPI {
             }
         }
         Prefs.setl(nowMs(), "c_upd")
+
+        // 原始车况留一份（调试用：查时间字段真实名字）
+        if let rawData = try? JSONSerialization.data(withJSONObject: d, options: [.prettyPrinted]),
+           let rawStr = String(data: rawData, encoding: .utf8) {
+            Prefs.set(String(rawStr.prefix(6000)), "c_raw")
+        }
+
         if vinChanged || carSeries.isEmpty { loadSeriesFromOpen() }
         if lat != 0 && lng != 0 { fetchAddress(lat, lng) }
 

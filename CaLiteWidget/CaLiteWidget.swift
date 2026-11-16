@@ -15,7 +15,11 @@ enum Shared {
 
     static func str(_ k: String) -> String { defaults.string(forKey: k) ?? "" }
 
-    static var logged: Bool { defaults.integer(forKey: "w_logged") == 1 }
+    /// 有凭据就算已登录：w_logged 这个标记跨进程可能没同步到，凭据更可靠
+    static var logged: Bool {
+        if defaults.integer(forKey: "w_logged") == 1 { return true }
+        return !str("w_token").isEmpty && !str("w_cid").isEmpty
+    }
 
     static var carName: String {
         let v = str("w_car")
