@@ -1223,6 +1223,60 @@ final class CarAPI {
         }
     }
 
+    // MARK: - 指令确认（源码 pollControlResult 的等价实现）
+
+    /// 发指令后轮询车况，直到期望状态出现或超时
+    /// - Parameters:
+    ///   - cmd: 逻辑指令码
+    ///   - expect: 用最新车况字典判断是否达到期望状态
+    func controlAndConfirm(_ cmd: String,
+                           expect: @escaping ([String: Any]) -> Bool,
+                           done: @escaping (Bool, String) -> Void) {
+        control(cmd: cmd) { ok, msg in
+            guard ok else {
+                DispatchQueue.main.async { done(false, msg) }
+                return
+            }
+            self.pollExpect(expect, attempt: 0, done: done)
+        }
+    }
+
+    private func pollExpect(_ expect: @escaping ([String: Any]) -> Bool,
+                            attempt: Int,
+                            done: @escaping (Bool, String) -> Void) {
+        if attempt >= 4 {
+            DispatchQueue.main.async {
+                done(false, "指令已发送，但没等到状态变化（车机可能离线，或该车型不上报这一项）")
+            }
+            return
+        }
+        DispatchQueue.global().asyncAfter(deadline: .now() + 2.0) {
+            _ = self.fetchStatus()
+            self.carData { d in
+                let reached = d.map(expect) ?? false
+                if reached {
+                    DispatchQueue.main.async { done(true, "已确认执行成功") }
+                } else {
+                    self.pollExpect(expect, attempt: attempt + 1, done: done)
+                }
+            }
+        }
+    }
+
+    /// async 包装，供 AppIntent（Siri / 快捷指令）调用
+    func controlAsync(_ cmd: String) async -> Bool {
+        await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
+            control(cmd: cmd) { ok, _ in cont.resume(returning: ok) }
+        }
+    }
+
+    /// async 版车况（给 Siri 报续航）
+    func carDataAsync() async -> [String: Any]? {
+        await withCheckedContinuation { (cont: CheckedContinuation<[String: Any]?, Never>) in
+            carData { d in cont.resume(returning: d) }
+        }
+    }
+
     // MARK: - 多车切换 / 空调温度 / 定位刷新
 
     /// 绑定车辆列表（多车切换用）

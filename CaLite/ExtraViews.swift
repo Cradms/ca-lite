@@ -6,11 +6,15 @@ struct TrackView: View {
     @State private var pts: [CLLocationCoordinate2D] = []
     @State private var loading = true
     @State private var err = ""
+    @State private var replayIndex = 0
+    @State private var replaying = false
+    @State private var timer: Timer?
 
     var body: some View {
-        ZStack {
-            TrackMap(points: pts)
+        ZStack(alignment: .bottom) {
+            TrackMap(points: pts, visibleCount: displayedCount)
                 .ignoresSafeArea(edges: .bottom)
+
             if loading {
                 ProgressView("加载轨迹…")
                     .padding(20)
@@ -27,6 +31,10 @@ struct TrackView: View {
                 .background(.ultraThinMaterial)
                 .clipShape(RoundedRectangle(cornerRadius: 16))
             }
+
+            if pts.count > 1 && !loading {
+                replayBar
+            }
         }
         .navigationTitle("今日行车轨迹")
         .navigationBarTitleDisplayMode(.inline)
@@ -38,6 +46,71 @@ struct TrackView: View {
             }
         }
         .onAppear(perform: load)
+        .onDisappear { stopTimer() }
+    }
+
+    /// 0 表示画全程；回放时只画到当前进度
+    private var displayedCount: Int {
+        if replaying || replayIndex > 0 {
+            return max(2, min(replayIndex, pts.count))
+        }
+        return 0
+    }
+
+    private var replayBar: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 12) {
+                Button {
+                    toggleReplay()
+                } label: {
+                    Image(systemName: replaying ? "pause.circle.fill" : "play.circle.fill")
+                        .font(.system(size: 30))
+                        .foregroundColor(C.blue)
+                }
+                .buttonStyle(.plain)
+
+                Slider(value: Binding(
+                    get: { Double(replayIndex) },
+                    set: { v in
+                        stopTimer()
+                        replayIndex = Int(v)
+                    }
+                ), in: 0...Double(max(1, pts.count - 1)))
+
+                Text("\(min(replayIndex, pts.count))/\(pts.count)")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundColor(C.muted)
+                    .frame(width: 62, alignment: .trailing)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(.horizontal, 14)
+        .padding(.bottom, 12)
+    }
+
+    private func toggleReplay() {
+        if replaying {
+            stopTimer()
+            return
+        }
+        if replayIndex >= pts.count - 1 { replayIndex = 0 }
+        replaying = true
+        timer = Timer.scheduledTimer(withTimeInterval: 0.12, repeats: true) { _ in
+            if replayIndex < pts.count {
+                replayIndex += 1
+            } else {
+                stopTimer()
+            }
+        }
+    }
+
+    private func stopTimer() {
+        timer?.invalidate()
+        timer = nil
+        replaying = false
     }
 
     private func load() {
@@ -45,6 +118,7 @@ struct TrackView: View {
         CarAPI.shared.trackPoints { p in
             pts = p.map { CLLocationCoordinate2D(latitude: $0.0, longitude: $0.1) }
             if p.isEmpty { err = "" }
+            replayIndex = 0
             loading = false
         }
     }
@@ -53,6 +127,7 @@ struct TrackView: View {
 /// MKMapView 包装（iOS 16 没有 MapPolyline）
 struct TrackMap: UIViewRepresentable {
     let points: [CLLocationCoordinate2D]
+    var visibleCount: Int = 0       // 0 = 全部
 
     func makeUIView(context: Context) -> MKMapView {
         let v = MKMapView()
@@ -64,18 +139,22 @@ struct TrackMap: UIViewRepresentable {
     func updateUIView(_ v: MKMapView, context: Context) {
         v.removeOverlays(v.overlays)
         v.removeAnnotations(v.annotations)
-        guard points.count > 1 else {
-            if let p = points.first {
+        // 回放时只画到当前进度
+        let shown = (visibleCount > 0 && visibleCount < points.count)
+            ? Array(points.prefix(visibleCount))
+            : points
+        guard shown.count > 1 else {
+            if let p = shown.first {
                 v.setRegion(MKCoordinateRegion(center: p, latitudinalMeters: 1200,
                                                longitudinalMeters: 1200), animated: true)
                 v.addAnnotation(MKPointAnnotation.custom(p, "车辆"))
             }
             return
         }
-        let line = MKPolyline(coordinates: points, count: points.count)
+        let line = MKPolyline(coordinates: shown, count: shown.count)
         v.addOverlay(line)
-        let a = MKPointAnnotation.custom(points[0], "起点")
-        let b = MKPointAnnotation.custom(points[points.count - 1], "终点")
+        let a = MKPointAnnotation.custom(shown[0], "起点")
+        let b = MKPointAnnotation.custom(shown[shown.count - 1], "当前位置")
         v.addAnnotations([a, b])
         v.setVisibleMapRect(line.boundingMapRect,
                             edgePadding: UIEdgeInsets(top: 60, left: 40, bottom: 60, right: 40),

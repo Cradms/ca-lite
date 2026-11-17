@@ -1,4 +1,5 @@
 import SwiftUI
+import LocalAuthentication
 
 /// 首页
 ///
@@ -165,19 +166,29 @@ struct CarHomeView: View {
             }
             .padding(.top, 12)
 
-            HStack(spacing: 8) {
-                if !winText.isEmpty {
-                    Text(winText)
-                        .font(.system(size: 11.5))
+            if !winText.isEmpty || st.trunk {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 10))
                         .foregroundColor(Color(hex: 0xE53935))
-                }
-                if st.trunk {
-                    Text("· 后备箱未关")
-                        .font(.system(size: 11.5))
+                    Text(winText.isEmpty ? "后备箱未关" : winText)
+                        .font(.system(size: 11.5, weight: .medium))
                         .foregroundColor(Color(hex: 0xE53935))
+                    Spacer(minLength: 4)
+                    if !winText.isEmpty {
+                        Button("一键关窗") {
+                            runCmd("CloseWindow", "关窗")
+                        }
+                        .font(.system(size: 10.5, weight: .medium))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 4)
+                        .background(Color(hex: 0xE53935))
+                        .clipShape(Capsule())
+                    }
                 }
+                .padding(.top, 8)
             }
-            .padding(.top, 6)
         }
         .padding(.horizontal, 18)
         .padding(.bottom, 16)
@@ -566,13 +577,109 @@ struct CarHomeView: View {
             alertMsg = "控车指令要用控车码做 RSA 加密。\n请先在长安 App 确认 6 位安全码，再点右上角「设置控车码」。"
             return
         }
+        // 解锁 / 上锁 / 启停 属于敏感操作，先过生物识别，顺带防误触
+        if ["UnLockDoor", "LockDoor", "OpenEngine", "CloseEngine"].contains(cmd) {
+            withBiometric { perform(cmd, title) }
+        } else {
+            perform(cmd, title)
+        }
+    }
+
+    /// 先改本地状态（乐观更新），再发指令并轮询确认
+    private func perform(_ cmd: String, _ title: String) {
+        applyOptimistic(cmd)
         toast = "正在\(title)…"
-        api.control(cmd: cmd) { ok, msg in
+        api.controlAndConfirm(cmd, expect: expectation(cmd)) { ok, msg in
             OpLogStore.append(cmd: title, ok: ok, msg: msg)
             toast = nil
-            alertMsg = ok ? "已下发：\(title)\n稍等几秒刷新状态" : "\(title)失败：\(msg)"
-            if ok { DispatchQueue.main.asyncAfter(deadline: .now() + 2) { refresh() } }
+            if ok {
+                alertMsg = "\(title) 成功"
+            } else {
+                alertMsg = "\(title)：\(msg)"
+                refresh()          // 回滚：拉真实状态覆盖乐观更新
+            }
         }
+    }
+
+    /// 生物识别门禁；设备不支持时直接放行
+    private func withBiometric(_ action: @escaping () -> Void) {
+        let ctx = LAContext()
+        var err: NSError?
+        guard ctx.canEvaluatePolicy(.deviceOwnerAuthentication, error: &err) else {
+            action()
+            return
+        }
+        ctx.evaluatePolicy(.deviceOwnerAuthentication,
+                           localizedReason: "验证身份后执行控车操作") { ok, _ in
+            DispatchQueue.main.async {
+                if ok {
+                    action()
+                } else {
+                    self.alertMsg = "身份验证未通过，已取消"
+                }
+            }
+        }
+    }
+
+    /// 点击瞬间改 UI，避免等 2-3 秒才看到变化
+    private func applyOptimistic(_ cmd: String) {
+        switch cmd {
+        case "LockDoor":
+            st.lockFL = true; st.lockFR = true; st.lockRL = true; st.lockRR = true
+        case "UnLockDoor":
+            st.lockFL = false; st.lockFR = false; st.lockRL = false; st.lockRR = false
+        case "OpenWindow", "WindowSlit":
+            st.winFL = true; st.winFR = true
+        case "CloseWindow":
+            st.winFL = false; st.winFR = false; st.winRL = false; st.winRR = false
+        case "OpenEngine":
+            st.engineOn = true
+        case "CloseEngine":
+            st.engineOn = false
+        case "openAir":
+            st.airOn = true
+        case "closeAir":
+            st.airOn = false
+        default:
+            break
+        }
+    }
+
+    /// 每条指令的「成功判据」——车况里出现这个状态才算真成功
+    private func expectation(_ cmd: String) -> ([String: Any]) -> Bool {
+        switch cmd {
+        case "LockDoor":
+            return { d in Self.flag(d, "locked") }
+        case "UnLockDoor":
+            return { d in !Self.flag(d, "locked") }
+        case "OpenWindow", "WindowSlit":
+            return { d in
+                Self.flag(d, "winFL") || Self.flag(d, "winFR")
+                    || Self.flag(d, "winRL") || Self.flag(d, "winRR")
+                    || Self.flag(d, "winOpen")
+            }
+        case "CloseWindow":
+            return { d in
+                !(Self.flag(d, "winFL") || Self.flag(d, "winFR")
+                  || Self.flag(d, "winRL") || Self.flag(d, "winRR"))
+            }
+        case "OpenEngine":
+            return { d in Self.flag(d, "engineOn") }
+        case "CloseEngine":
+            return { d in !Self.flag(d, "engineOn") }
+        case "openAir":
+            return { d in Self.flag(d, "airOn") }
+        case "closeAir":
+            return { d in !Self.flag(d, "airOn") }
+        default:
+            return { _ in true }        // 闪灯 / 鸣笛 / 拍照 没有可确认的状态
+        }
+    }
+
+    private static func flag(_ d: [String: Any], _ k: String) -> Bool {
+        if let b = d[k] as? Bool { return b }
+        if let i = d[k] as? Int { return i == 1 }
+        return false
     }
 
     private func showBtKeyNote() {

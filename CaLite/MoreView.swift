@@ -100,6 +100,8 @@ struct MoreView: View {
                 // 车务（油耗 / 保养 / 轨迹 / 照片）
                 Card {
                     VStack(spacing: 0) {
+                        navRow("组合场景", "wand.and.stars") { ScenesView() }
+                        rowDivider
                         navRow("油耗记录", "fuelpump.fill") { FuelView() }
                         rowDivider
                         navRow("保养与自检", "wrench.and.screwdriver.fill") { MaintainView() }

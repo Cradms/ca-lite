@@ -18,12 +18,6 @@
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
-	<key>CFBundleVersion</key>
-	<string>$(CURRENT_PROJECT_VERSION)</string>
-
-	<key>LSRequiresIPhoneOS</key>
-	<true/>
-	<!-- 小组件控件回跳（calite://action?cmd=LockDoor） -->
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -35,47 +29,8 @@
 			</array>
 		</dict>
 	</array>
-	<key>UILaunchScreen</key>
-	<dict/>
-	<key>UIStatusBarStyle</key>
-	<string>UIStatusBarStyleDarkContent</string>
-	<key>UIViewControllerBasedStatusBarAppearance</key>
-	<false/>
-	<key>UISupportedInterfaceOrientations</key>
-	<array>
-		<string>UIInterfaceOrientationPortrait</string>
-	</array>
-	<key>UIDeviceFamily</key>
-	<array>
-		<integer>1</integer>
-	</array>
-
-	<!-- 允许 http 明文（局域网/自建服务器） -->
-	<key>NSAppTransportSecurity</key>
-	<dict>
-		<key>NSAllowsArbitraryLoads</key>
-		<true/>
-		<key>NSAllowsLocalNetworking</key>
-		<true/>
-	</dict>
-
-	<!-- 权限说明 -->
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>用于在地图上显示车辆位置和你的当前位置</string>
-	<key>NSCameraUsageDescription</key>
-	<string>用于拍摄车辆照片、上传头像</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>用于选择图片上传</string>
-	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>用于保存车辆截图</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>用于语音输入</string>
-
-	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>用于连接车辆蓝牙钥匙，扫描并诊断周边 BLE 设备</string>
-	<key>NSBluetoothPeripheralUsageDescription</key>
-	<string>用于连接车辆蓝牙钥匙</string>
-	<!-- 允许打开高德等外部 App -->
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>iosamap</string>
@@ -84,5 +39,44 @@
 		<string>tel</string>
 		<string>mailto</string>
 	</array>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>用于连接车辆蓝牙钥匙，扫描并诊断周边 BLE 设备</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>用于连接车辆蓝牙钥匙</string>
+	<key>NSCameraUsageDescription</key>
+	<string>用于拍摄车辆照片、上传头像</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>验证身份后执行解锁、上锁、启停等控车操作</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>用于在地图上显示车辆位置和你的当前位置</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>用于语音输入</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>用于保存车辆截图</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>用于选择图片上传</string>
+	<key>UIDeviceFamily</key>
+	<array>
+		<integer>1</integer>
+	</array>
+	<key>UILaunchScreen</key>
+	<dict/>
+	<key>UIStatusBarStyle</key>
+	<string>UIStatusBarStyleDarkContent</string>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+	<key>UIViewControllerBasedStatusBarAppearance</key>
+	<false/>
 </dict>
 </plist>

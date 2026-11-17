@@ -38,6 +38,11 @@ struct MaintainView: View {
                 if loading {
                     ProgressView().padding(.top, 60)
                 } else {
+                    // 健康评分
+                    if !advices.isEmpty {
+                        healthCard
+                    }
+
                     // 保养建议
                     if !advices.isEmpty {
                         Card {
@@ -154,6 +159,77 @@ struct MaintainView: View {
             }
         }
         .onAppear { load() }
+    }
+
+    // MARK: 健康评分
+
+    /// 由各保养项剩余寿命推一个 0–100 的总分
+    private var healthScore: Int {
+        guard !advices.isEmpty else { return 0 }
+        let sum = advices.reduce(0.0) { $0 + max(0, min(100, $1.pct)) }
+        return Int((sum / Double(advices.count)).rounded())
+    }
+
+    private var healthColor: Color {
+        if healthScore >= 70 { return C.green }
+        if healthScore >= 40 { return C.amber }
+        return C.red
+    }
+
+    private var healthText: String {
+        if healthScore >= 70 { return "状态良好" }
+        if healthScore >= 40 { return "建议关注" }
+        return "需要处理"
+    }
+
+    private var urgentItems: [MaintainAdvice] {
+        advices.filter { $0.pct < 30 }.sorted { $0.pct < $1.pct }
+    }
+
+    private var healthCard: some View {
+        Card {
+            HStack(spacing: 16) {
+                ZStack {
+                    Circle()
+                        .stroke(C.bg, lineWidth: 9)
+                    Circle()
+                        .trim(from: 0, to: CGFloat(healthScore) / 100.0)
+                        .stroke(healthColor, style: StrokeStyle(lineWidth: 9, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                        .animation(.easeOut(duration: 0.6), value: healthScore)
+                    VStack(spacing: 0) {
+                        Text("\(healthScore)")
+                            .font(.system(size: 22, weight: .bold))
+                            .foregroundColor(C.txt)
+                        Text("分")
+                            .font(.system(size: 9))
+                            .foregroundColor(C.faint)
+                    }
+                }
+                .frame(width: 74, height: 74)
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(healthText)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(healthColor)
+                    if urgentItems.isEmpty {
+                        Text("各项保养余量充足")
+                            .font(.system(size: 11.5))
+                            .foregroundColor(C.muted)
+                    } else {
+                        Text("待处理 \(urgentItems.count) 项")
+                            .font(.system(size: 11.5))
+                            .foregroundColor(C.red)
+                        Text(urgentItems.prefix(2).map { "\($0.name) 剩 \(Int($0.pct))%" }
+                                .joined(separator: " · "))
+                            .font(.system(size: 10.5))
+                            .foregroundColor(C.faint)
+                            .lineLimit(2)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+        }
     }
 
     private func adviceRow(_ a: MaintainAdvice) -> some View {
