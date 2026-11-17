@@ -211,7 +211,6 @@ struct CarStatusView: View {
             ("车锁", st.lockFL ? "已锁车" : "未锁车", st.lockFL ? okColor : badColor),
             ("车门", doorText, doorText == "全部关闭" ? okColor : badColor),
             ("车窗", winText, winText == "全部关闭" ? okColor : badColor),
-            ("天窗", st.sunOpen ? "未关" : "已关", st.sunOpen ? badColor : okColor),
             ("后备箱", st.trunk ? "未关" : "已关", st.trunk ? badColor : okColor),
             ("发动机", st.engineOn ? "运行中" : "已熄火", st.engineOn ? Color(hex: 0x2F6FB5) : okColor),
             ("空调", st.airOn ? "开启" : "关闭", st.airOn ? Color(hex: 0x2F6FB5) : Color(hex: 0x8A94A3))

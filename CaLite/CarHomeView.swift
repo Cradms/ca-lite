@@ -3,7 +3,7 @@ import SwiftUI
 /// 首页
 ///
 /// 版式按参考图：更新于 → 大号车牌 → 超大续航（右上角车模）→ 状态胶囊
-/// → 胎压四轮 → 六宫格（解锁/留缝/天窗翘起/启动/空调/闪灯）
+/// → 胎压四轮 → 控车九宫格（车锁/车窗/留缝/发动机/空调/鸣笛/闪灯/闪灯鸣笛/拍全景）
 /// → 位置条 → 全部控制（源码 7 组 + 空调温度）→ footer
 struct CarHomeView: View {
     @State private var st = CarState()
@@ -159,8 +159,6 @@ struct CarHomeView: View {
                            st.engineOn ? Color(hex: 0x2F9E68) : Color(hex: 0x6E7A8A))
                 statusChip(st.lockFL ? "已锁车" : "未锁车",
                            st.lockFL ? Color(hex: 0x2F9E68) : Color(hex: 0xE53935))
-                statusChip(st.sunOpen ? "天窗未关" : "天窗已关",
-                           st.sunOpen ? Color(hex: 0xE53935) : Color(hex: 0x6E7A8A))
                 statusChip(st.airOn ? "空调开" : "空调关",
                            st.airOn ? Color(hex: 0x2F6FB5) : Color(hex: 0x6E7A8A))
                 Spacer(minLength: 0)
@@ -297,13 +295,6 @@ struct CarHomeView: View {
                        winAnyOpen ? "CloseWindow" : "OpenWindow",
                        highlight: winAnyOpen)
             tile("留缝", "rectangle.split.3x1", "WindowSlit")
-
-            // 天窗：开着 → 关天窗；关着 → 开天窗
-            toggleTile(st.sunOpen ? "关天窗" : "开天窗",
-                       st.sunOpen ? "sun.min" : "sun.max",
-                       st.sunOpen ? "CloseDormer" : "OpenDormer",
-                       highlight: st.sunOpen)
-            tile("天窗翘起", "sun.max.fill", "SkyWindowLiftUp")
 
             // 发动机：运行中 → 熄火；熄火 → 启动
             toggleTile(st.engineOn ? "熄火" : "启动",
