@@ -99,7 +99,8 @@ struct CarStatusView: View {
             Divider()
 
             HStack(spacing: 0) {
-                metric("油量", st.fuel.isEmpty ? "--" : st.fuel, "L")
+                metric("油量", st.fuel.isEmpty ? "--" : st.fuel,
+                       fuelPctText.isEmpty ? "L" : "L · \(fuelPctText)%")
                 vline
                 metric("总里程", st.odometer.isEmpty ? "--" : st.odometer, "km")
                 vline
@@ -136,6 +137,12 @@ struct CarStatusView: View {
                 .foregroundColor(Color(hex: 0x8A94A3))
         }
         .frame(maxWidth: .infinity)
+    }
+
+    /// 油量百分比（按 53L 油箱估算，与源码一致）
+    private var fuelPctText: String {
+        guard let f = Double(st.fuel), f > 0 else { return "" }
+        return String(format: "%.0f", min(100, f / 53.0 * 100))
     }
 
     private var avgTyre: String {

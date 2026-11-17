@@ -1113,6 +1113,63 @@ final class CarAPI {
     // MARK: - 轨迹 / 历史 / 全景
 
     /// 今日轨迹点（GCJ-02）
+    /// 带时间的轨迹点（行程聚合用）
+    struct TrackPoint {
+        let lat: Double
+        let lng: Double
+        let time: Date?
+    }
+
+    func trackPointsDetailed(done: @escaping ([TrackPoint]) -> Void) {
+        bg {
+            self.legacyRefreshIfNeeded(force: false)
+            let df = DateFormatter()
+            df.dateFormat = "yyyy-MM-dd"
+            let day = df.string(from: Date())
+            let url = Self.MI_HOST + "/appserver/api/cardata/historyTrackFromDayTableByDate?carId="
+                + Self.urlEncode(self.carId) + "&startDate=" + day + "&endDate=" + day
+                + "&loading=false&toast=false&ErrorAutoProjectile=false&token=" + Self.urlEncode(self.token)
+            let (d, _) = self.raw(url, method: "POST", form: [:], headers: self.miHeaders())
+            var arr: [[String: Any]] = []
+            if let o = self.json(d) {
+                if let a = o["data"] as? [[String: Any]] { arr = a }
+                else if let dd = o["data"] as? [String: Any] {
+                    arr = (dd["list"] as? [[String: Any]]) ?? (dd["points"] as? [[String: Any]])
+                        ?? (dd["trackList"] as? [[String: Any]]) ?? []
+                }
+            }
+            var out: [TrackPoint] = []
+            for p in arr {
+                func num(_ keys: [String]) -> Double {
+                    for k in keys {
+                        if let v = p[k] as? Double, v != 0 { return v }
+                        if let v = p[k] as? Int, v != 0 { return Double(v) }
+                        if let v = p[k] as? String, let x = Double(v), x != 0 { return x }
+                    }
+                    return 0
+                }
+                let lng = num(["lng", "gcjLng", "longitude", "lon"])
+                let lat = num(["lat", "gcjLat", "latitude"])
+                if lng == 0 || lat == 0 { continue }
+
+                var t: Date?
+                for k in ["gpsTime", "positionTime", "reportTime", "collectTime",
+                          "time", "dateTime", "sampleTime", "uploadTime", "terminalTime"] {
+                    if let v = p[k], let parsed = Self.parseAnyTime(v) { t = parsed; break }
+                }
+                if t == nil, let ts = p["timestamp"] {
+                    t = Self.parseAnyTime(ts)
+                }
+                out.append(TrackPoint(lat: lat, lng: lng, time: t))
+            }
+            // 按时间升序（有时间才排）
+            if out.contains(where: { $0.time != nil }) {
+                out.sort { ($0.time ?? Date.distantPast) < ($1.time ?? Date.distantPast) }
+            }
+            DispatchQueue.main.async { done(out) }
+        }
+    }
+
     func trackPoints(done: @escaping ([(Double, Double)]) -> Void) {
         bg {
             self.legacyRefreshIfNeeded(force: false)

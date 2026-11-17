@@ -106,7 +106,9 @@ struct MoreView: View {
                         rowDivider
                         navRow("保养与自检", "wrench.and.screwdriver.fill") { MaintainView() }
                         rowDivider
-                        navRow("今日行车轨迹", "point.topleft.down.to.point.bottomright.curvepath") { TrackView() }
+                        navRow("今日行程", "car.side.fill") { TripsView() }
+                        rowDivider
+                        navRow("行车轨迹", "point.topleft.down.to.point.bottomright.curvepath") { TrackView() }
                         rowDivider
                         navRow("全景照片", "photo.on.rectangle") { PhotoView() }
                         rowDivider
