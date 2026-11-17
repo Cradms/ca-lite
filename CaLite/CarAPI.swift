@@ -166,11 +166,11 @@ final class CarAPI {
     var isLoggedIn: Bool { !token.isEmpty && !carId.isEmpty }
 
     var deviceId: String {
+        // 服务端要标准 UUID（带横线、大写），旧版本存的无横线格式直接作废
         let cur = Prefs.s(K.device)
-        if !cur.isEmpty { return cur }
-        let id = UIDevice.current.identifierForVendor?.uuidString
-            .replacingOccurrences(of: "-", with: "").lowercased()
-            ?? UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+        if cur.count == 36 && cur.contains("-") { return cur.uppercased() }
+        let id = UIDevice.current.identifierForVendor?.uuidString.uppercased()
+            ?? UUID().uuidString.uppercased()
         Prefs.set(id, K.device)
         return id
     }
@@ -1112,14 +1112,21 @@ final class CarAPI {
 
     /// get-pin-token 的 s 明文有多种可能，逐个试；命中即用
     private func pinTokenCandidates(_ cmd: String, _ pvc: String) -> [String] {
-        let cid = carId, pin = controlPin
+        let cid = carId, pin = controlPin, dev = deviceId
         return [
-            "{\"carId\":\"\(cid)\",\"pin\":\"\(pin)\",\"pinVerifyCode\":\"\(pvc)\",\"cmd\":\"\(cmd)\",\"type\":\"\(cmd)\"}",
-            "{\"carId\":\"\(cid)\",\"pin\":\"\(pin)\",\"pinVerifyCode\":\"\(pvc)\"}",
+            "{}",
             "{\"carId\":\"\(cid)\",\"pin\":\"\(pin)\"}",
+            "{\"carId\":\"\(cid)\",\"pin\":\"\(pin)\",\"pinVerifyCode\":\"\(pvc)\"}",
+            "{\"carId\":\"\(cid)\",\"pin\":\"\(pin)\",\"pinVerifyCode\":\"\(pvc)\",\"cmd\":\"\(cmd)\",\"type\":\"\(cmd)\"}",
             "{\"pin\":\"\(pin)\"}",
             "{\"carId\":\"\(cid)\"}",
-            "{\"pinVerifyCode\":\"\(pvc)\",\"cmd\":\"\(cmd)\",\"type\":\"\(cmd)\",\"pin\":\"\(pin)\",\"wifiPassword\":\"\"}"
+            "{\"carId\":\"\(cid)\",\"pinCode\":\"\(pin)\"}",
+            "{\"carId\":\"\(cid)\",\"pin\":\"\(pin)\",\"deviceId\":\"\(dev)\"}",
+            "{\"carId\":\"\(cid)\",\"pin\":\"\(pin)\",\"pinVerifyCode\":\"\(pvc)\",\"deviceId\":\"\(dev)\"}",
+            "carId=\(cid)&pin=\(pin)",
+            "{\"carId\":\"\(cid)\",\"carPin\":\"\(pin)\"}",
+            "{\"pinVerifyCode\":\"\(pvc)\",\"cmd\":\"\(cmd)\",\"type\":\"\(cmd)\",\"pin\":\"\(pin)\",\"wifiPassword\":\"\"}",
+            "{\"carId\":\"\(cid)\",\"pin\":\"\(pin)\",\"token\":\"\(token)\"}"
         ]
     }
 
@@ -1164,7 +1171,8 @@ final class CarAPI {
                 Self.trace("v5 候选#\(i) 命中 pinToken=\(pt)")
                 break
             }
-            Self.trace("v5 候选#\(i) 失败: \(String(txt.prefix(90)))")
+            let masked = plain.replacingOccurrences(of: pin, with: "******")
+            Self.trace("v5 候选#\(i) 失败 明文=\(masked) 响应=\(String(txt.prefix(200)))")
         }
         guard !pinToken.isEmpty else { return "未取到 pinToken" }
 
