@@ -113,6 +113,8 @@ struct MoreView: View {
                         navRow("全景照片", "photo.on.rectangle") { PhotoView() }
                         rowDivider
                         navRow("蓝牙钥匙 / BLE 调试", "key.fill") { BleKeyView() }
+                        rowDivider
+                        navRow("控车诊断", "stethoscope") { ControlDiagView() }
                     }
                 }
 

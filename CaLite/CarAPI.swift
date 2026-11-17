@@ -999,9 +999,23 @@ final class CarAPI {
         if c == "SmartLock" || c == "lock_toggle" {
             c = Prefs.b("c_locked") ? "UnLockDoor" : "LockDoor"
         }
+        // ① v5 通道（官方新版）：v3 在部分账号上会被判「账户安全」直接 1004
+        if let e5 = controlV5(c) {
+            Self.trace("v5 未成功（\(e5)），回落主通道")
+        } else {
+            if c == "LockDoor" || c == "UnLockDoor" {
+                Prefs.seti(c == "LockDoor" ? 1 : 0, "lock_expect")
+                Prefs.setl(nowMs(), "lock_expect_at")
+            }
+            Prefs.setl(nowMs(), "last_cmd_at")
+            Self.trace("v5 成功：\(c)")
+            return nil
+        }
+
+        // ② 主通道 openc-apigw
         let err = miControl(c, temp: nil)
         if let e = err {
-            // 主通道失败 → 老通道备用
+            // ③ 老 v3 通道备用
             if let e2 = legacyControl(c) { return "\(e)；\(e2)" }
         }
         if c == "LockDoor" || c == "UnLockDoor" {
@@ -1082,6 +1096,97 @@ final class CarAPI {
     }
 
     /// 备用通道（与主通道同链路，独立实现便于排查）
+    // MARK: - v5 控车通道（官方新版）
+
+    /// 控车诊断日志（最多 60 行）
+    static func trace(_ line: String) {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm:ss"
+        var arr = Prefs.s("ctl_trace").components(separatedBy: "\n").filter { !$0.isEmpty }
+        arr.append("\(f.string(from: Date())) \(line)")
+        if arr.count > 60 { arr = Array(arr.suffix(60)) }
+        Prefs.set(arr.joined(separator: "\n"), "ctl_trace")
+    }
+
+    static func clearTrace() { Prefs.set("", "ctl_trace") }
+
+    /// get-pin-token 的 s 明文有多种可能，逐个试；命中即用
+    private func pinTokenCandidates(_ cmd: String, _ pvc: String) -> [String] {
+        let cid = carId, pin = controlPin
+        return [
+            "{\"carId\":\"\(cid)\",\"pin\":\"\(pin)\",\"pinVerifyCode\":\"\(pvc)\",\"cmd\":\"\(cmd)\",\"type\":\"\(cmd)\"}",
+            "{\"carId\":\"\(cid)\",\"pin\":\"\(pin)\",\"pinVerifyCode\":\"\(pvc)\"}",
+            "{\"carId\":\"\(cid)\",\"pin\":\"\(pin)\"}",
+            "{\"pin\":\"\(pin)\"}",
+            "{\"carId\":\"\(cid)\"}",
+            "{\"pinVerifyCode\":\"\(pvc)\",\"cmd\":\"\(cmd)\",\"type\":\"\(cmd)\",\"pin\":\"\(pin)\",\"wifiPassword\":\"\"}"
+        ]
+    }
+
+    /// 官方 v5 链路：
+    /// createPinVerifyCode → security/key → get-pin-token → v5/control/execute
+    /// execute 的 pinVerifyCode 只取「校验码数字部分的前 15 位」
+    private func controlV5(_ cmd: String) -> String? {
+        let cid = carId, tk = token, pin = controlPin
+        guard !cid.isEmpty, !tk.isEmpty else { return "无令牌" }
+        guard !pin.isEmpty else { return "无控车码" }
+
+        // 1) 校验码
+        let (d1, _) = raw(Self.MI_HOST + "/app2/api/control/createPinVerifyCode",
+                          method: "POST", form: ["token": tk], headers: miHeaders())
+        let t1 = d1.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+        guard let o1 = json(d1), (o1["code"] as? Int) == 0,
+              let rawCode = o1["data"] as? String, !rawCode.isEmpty else {
+            Self.trace("v5 取校验码失败: \(String(t1.prefix(120)))")
+            return "取校验码失败"
+        }
+        let pvc = String(rawCode.prefix(15))
+        Self.trace("v5 校验码 \(rawCode) → \(pvc)")
+
+        // 2) 公钥（v5 版不带 carId）
+        let (d2, _) = raw(Self.MI_HOST + "/app2/api/v2/security/key?token=" + Self.urlEncode(tk),
+                          headers: miHeaders())
+        guard let o2 = json(d2), let pub = o2["data"] as? String, !pub.isEmpty else {
+            Self.trace("v5 取公钥失败")
+            return "取公钥失败"
+        }
+
+        // 3) get-pin-token
+        var pinToken = ""
+        for (i, plain) in pinTokenCandidates(cmd, pvc).enumerated() {
+            guard let s = RSACrypto.encryptOAEP(plain, publicKeyPEM: pub) else { continue }
+            let url = Self.MI_HOST + "/app2/api/v5/control/get-pin-token?s=" + Self.urlEncode(s)
+            let (d3, _) = raw(url, method: "POST", form: ["carId": cid], headers: miHeaders())
+            let txt = d3.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+            if let o3 = json(d3), (o3["code"] as? Int) == 0,
+               let pt = o3["data"] as? String, !pt.isEmpty {
+                pinToken = pt
+                Self.trace("v5 候选#\(i) 命中 pinToken=\(pt)")
+                break
+            }
+            Self.trace("v5 候选#\(i) 失败: \(String(txt.prefix(90)))")
+        }
+        guard !pinToken.isEmpty else { return "未取到 pinToken" }
+
+        // 4) execute（全部走 query）
+        let q = "?carId=" + Self.urlEncode(cid)
+            + "&deviceId=" + Self.urlEncode(deviceId)
+            + "&pinToken=" + Self.urlEncode(pinToken)
+            + "&pinVerifyCode=" + Self.urlEncode(pvc)
+        let (d4, _) = raw(Self.MI_HOST + "/app2/api/v5/control/execute" + q,
+                          method: "POST", form: [:], headers: miHeaders())
+        let t4 = d4.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+        guard let o4 = json(d4) else {
+            Self.trace("v5 无响应: \(String(t4.prefix(90)))")
+            return "无响应"
+        }
+        if (o4["code"] as? Int) == 0 { return nil }
+        let code = o4["code"] as? Int ?? -1
+        let msg = (o4["msg"] as? String) ?? ""
+        Self.trace("v5 execute 失败 code=\(code) \(msg)")
+        return "code=\(code) \(msg)"
+    }
+
     private func legacyControl(_ cmdValue: String) -> String? {
         let pin = controlPin
         guard !pin.isEmpty else { return "未填控车码" }
