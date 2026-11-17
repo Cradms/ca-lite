@@ -283,22 +283,40 @@ struct CarHomeView: View {
 
     // MARK: - 六宫格
 
-    // MARK: - 全部控车按钮（一行三个，全部平铺）
+    // MARK: - 全部控车按钮（一行三个；相反功能合并成一个动态键）
 
     private var gridCard: some View {
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3),
                   spacing: 10) {
+            // 车锁：已锁 → 解锁（绿）；未锁 → 上锁（红）
             lockTile
-            tile("开窗", "arrow.down.square", "OpenWindow")
-            tile("关窗", "arrow.up.square", "CloseWindow")
+
+            // 车窗：任一窗开着 → 关窗；全关 → 开窗
+            toggleTile(winAnyOpen ? "关窗" : "开窗",
+                       winAnyOpen ? "arrow.up.square" : "arrow.down.square",
+                       winAnyOpen ? "CloseWindow" : "OpenWindow",
+                       highlight: winAnyOpen)
             tile("留缝", "rectangle.split.3x1", "WindowSlit")
-            tile("开天窗", "sun.max", "OpenDormer")
-            tile("关天窗", "sun.min", "CloseDormer")
+
+            // 天窗：开着 → 关天窗；关着 → 开天窗
+            toggleTile(st.sunOpen ? "关天窗" : "开天窗",
+                       st.sunOpen ? "sun.min" : "sun.max",
+                       st.sunOpen ? "CloseDormer" : "OpenDormer",
+                       highlight: st.sunOpen)
             tile("天窗翘起", "sun.max.fill", "SkyWindowLiftUp")
-            tile("启动", "power", "OpenEngine")
-            tile("熄火", "power.circle", "CloseEngine")
-            tile("开空调", "snowflake", "openAir")
-            tile("关空调", "wind", "closeAir")
+
+            // 发动机：运行中 → 熄火；熄火 → 启动
+            toggleTile(st.engineOn ? "熄火" : "启动",
+                       st.engineOn ? "power.circle" : "power",
+                       st.engineOn ? "CloseEngine" : "OpenEngine",
+                       highlight: st.engineOn)
+
+            // 空调：开着 → 关空调；关着 → 开空调
+            toggleTile(st.airOn ? "关空调" : "开空调",
+                       st.airOn ? "wind" : "snowflake",
+                       st.airOn ? "closeAir" : "openAir",
+                       highlight: st.airOn)
+
             tile("鸣笛", "speaker.wave.2.fill", "Whistle")
             tile("闪灯", "lightbulb", "FlashLight")
             tile("闪灯鸣笛", "light.beacon.max.fill", "RemoteSearchCar")
@@ -306,7 +324,11 @@ struct CarHomeView: View {
         }
     }
 
-    /// 锁车键随状态切换：锁着显示「解锁」，未锁显示「上锁」
+    private var winAnyOpen: Bool {
+        st.winFL || st.winFR || st.winRL || st.winRR
+    }
+
+    /// 车锁键：锁着显示「解锁」(绿)，未锁显示「上锁」(红)
     private var lockTile: some View {
         let locked = st.lockFL
         return Button {
@@ -324,6 +346,31 @@ struct CarHomeView: View {
             .frame(height: 74)
             .background(locked ? Color(hex: 0xEAF7F0) : Color(hex: 0xFDEDED))
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// 相反功能合并键：highlight=true 表示当前处于「开启/待关闭」状态，按钮用蓝底突出
+    private func toggleTile(_ title: String, _ icon: String, _ cmd: String,
+                            highlight: Bool) -> some View {
+        Button {
+            runCmd(cmd, title)
+        } label: {
+            VStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 22))
+                    .foregroundColor(highlight ? .white : Color(hex: 0x1B3A6B))
+                Text(title)
+                    .font(.system(size: 11.5, weight: highlight ? .medium : .regular))
+                    .foregroundColor(highlight ? .white : Color(hex: 0x2B3A4F))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 74)
+            .background(highlight ? Color(hex: 0x2F6FB5) : Color.white.opacity(0.94))
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .shadow(color: Color(hex: 0xA8BCD4).opacity(0.18), radius: 6, x: 0, y: 3)
         }
         .buttonStyle(.plain)
     }
