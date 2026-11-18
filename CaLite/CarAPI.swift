@@ -1111,22 +1111,26 @@ final class CarAPI {
     static func clearTrace() { Prefs.set("", "ctl_trace") }
 
     /// get-pin-token 的 s 明文有多种可能，逐个试；命中即用
+    /// get-pin-token 的 s 明文：服务端报过「token为空」，
+    /// 说明登录 token 必须被加密进 s 里（header/body 都不带）。
+    /// 按「最简优先」排列，逐个试。
     private func pinTokenCandidates(_ cmd: String, _ pvc: String) -> [String] {
-        let cid = carId, pin = controlPin, dev = deviceId
+        let t = token, cid = carId, pin = controlPin, dev = deviceId
         return [
-            "{}",
-            "{\"carId\":\"\(cid)\",\"pin\":\"\(pin)\"}",
-            "{\"carId\":\"\(cid)\",\"pin\":\"\(pin)\",\"pinVerifyCode\":\"\(pvc)\"}",
-            "{\"carId\":\"\(cid)\",\"pin\":\"\(pin)\",\"pinVerifyCode\":\"\(pvc)\",\"cmd\":\"\(cmd)\",\"type\":\"\(cmd)\"}",
-            "{\"pin\":\"\(pin)\"}",
-            "{\"carId\":\"\(cid)\"}",
-            "{\"carId\":\"\(cid)\",\"pinCode\":\"\(pin)\"}",
-            "{\"carId\":\"\(cid)\",\"pin\":\"\(pin)\",\"deviceId\":\"\(dev)\"}",
-            "{\"carId\":\"\(cid)\",\"pin\":\"\(pin)\",\"pinVerifyCode\":\"\(pvc)\",\"deviceId\":\"\(dev)\"}",
-            "carId=\(cid)&pin=\(pin)",
-            "{\"carId\":\"\(cid)\",\"carPin\":\"\(pin)\"}",
-            "{\"pinVerifyCode\":\"\(pvc)\",\"cmd\":\"\(cmd)\",\"type\":\"\(cmd)\",\"pin\":\"\(pin)\",\"wifiPassword\":\"\"}",
-            "{\"carId\":\"\(cid)\",\"pin\":\"\(pin)\",\"token\":\"\(token)\"}"
+            #"{"token":"\#(t)","carId":"\#(cid)"}"#,
+            #"{"carId":"\#(cid)","token":"\#(t)"}"#,
+            #"{"token":"\#(t)","carId":"\#(cid)","pin":"\#(pin)"}"#,
+            #"{"token":"\#(t)"}"#,
+            #"{"token":"\#(t)","carId":"\#(cid)","pin":"\#(pin)","pinVerifyCode":"\#(pvc)"}"#,
+            #"{"carId":"\#(cid)","token":"\#(t)","pin":"\#(pin)","pinVerifyCode":"\#(pvc)"}"#,
+            #"{"token":"\#(t)","carId":"\#(cid)","pin":"\#(pin)","deviceId":"\#(dev)"}"#,
+            #"{"token":"\#(t)","carId":"\#(cid)","pin":"\#(pin)","pinVerifyCode":"\#(pvc)","deviceId":"\#(dev)"}"#,
+            #"{"token":"\#(t)","carId":"\#(cid)","pin":"\#(pin)","pinVerifyCode":"\#(pvc)","cmd":"\#(cmd)","type":"\#(cmd)"}"#,
+            #"{"carId":"\#(cid)","pin":"\#(pin)","pinVerifyCode":"\#(pvc)","cmd":"\#(cmd)","type":"\#(cmd)","wifiPassword":"","token":"\#(t)"}"#,
+            #"{"accessToken":"\#(t)","carId":"\#(cid)","pin":"\#(pin)"}"#,
+            #"{"token":"\#(t)","carId":"\#(cid)","pinCode":"\#(pin)"}"#,
+            #"token=\#(t)&carId=\#(cid)&pin=\#(pin)"#,
+            #"{"token":"\#(t)","carId":"\#(cid)","pin":"\#(pin)","timestamp":\#(Int(Date().timeIntervalSince1970 * 1000))}"#
         ]
     }
 
