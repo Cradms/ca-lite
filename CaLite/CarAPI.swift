@@ -1158,9 +1158,12 @@ final class CarAPI {
             return "取公钥失败"
         }
 
-        // 3) get-pin-token
-        var pinToken = ""
-        for (i, plain) in pinTokenCandidates(cmd, pvc).enumerated() {
+        // 3) pinToken：手动填写的优先（HAR 里抓到的是长期有效值）
+        var pinToken = Prefs.s("pin_token").trimmingCharacters(in: .whitespacesAndNewlines)
+        if !pinToken.isEmpty {
+            Self.trace("v5 使用手填 pinToken=\(pinToken)")
+        }
+        for (i, plain) in (pinToken.isEmpty ? pinTokenCandidates(cmd, pvc) : []).enumerated() {
             guard let s = RSACrypto.encryptOAEP(plain, publicKeyPEM: pub) else { continue }
             let url = Self.MI_HOST + "/app2/api/v5/control/get-pin-token?s=" + Self.urlEncode(s)
             let (d3, _) = raw(url, method: "POST", form: ["carId": cid], headers: miHeaders())

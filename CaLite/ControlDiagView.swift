@@ -4,6 +4,7 @@ import SwiftUI
 struct ControlDiagView: View {
     @State private var trace = ""
     @State private var toast: String?
+    @State private var pinTokenInput = ""
 
     private let api = CarAPI.shared
 
@@ -43,7 +44,10 @@ struct ControlDiagView: View {
                     .padding(.bottom, 24)
             }
         }
-        .onAppear { trace = Prefs.s("ctl_trace") }
+        .onAppear {
+            trace = Prefs.s("ctl_trace")
+            pinTokenInput = Prefs.s("pin_token")
+        }
     }
 
     private var envCard: some View {
@@ -61,6 +65,8 @@ struct ControlDiagView: View {
             line("carId", String(api.carId.prefix(8)) + (api.carId.isEmpty ? " 未登录" : "…"), C.muted)
             sep
             line("最近一次指令", Prefs.l("last_cmd_at") > 0 ? agoText : "无", C.muted)
+            sep
+            pinTokenRow
 
             HStack(spacing: 10) {
                 Button {
@@ -96,6 +102,39 @@ struct ControlDiagView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.white)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    /// 手动填 pinToken：填了就走这条路，不再尝试自动换取
+    private var pinTokenRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("pinToken（v5 控车凭证）")
+                .font(.system(size: 11))
+                .foregroundColor(C.faint)
+            HStack(spacing: 8) {
+                TextField("32 位十六进制，留空则自动获取", text: $pinTokenInput)
+                    .font(.system(size: 11, design: .monospaced))
+                    .textFieldStyle(.roundedBorder)
+                    .autocapitalization(.none)
+                    .disableAutocorrection(true)
+                Button("保存") {
+                    let v = pinTokenInput.trimmingCharacters(in: .whitespacesAndNewlines)
+                    Prefs.set(v, "pin_token")
+                    toast = v.isEmpty ? "已清空" : "已保存"
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { toast = nil }
+                }
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(.white)
+                .padding(.horizontal, 12)
+                .frame(height: 30)
+                .background(C.blue)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
+            Text("从抓包里能拿到（v5/control/get-pin-token 的 data）。填一次通常长期有效。")
+                .font(.system(size: 9.5))
+                .foregroundColor(C.faint)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.vertical, 8)
     }
 
     private var traceCard: some View {
