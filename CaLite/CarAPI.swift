@@ -1222,7 +1222,18 @@ final class CarAPI {
             ? verify : "\"\(verify)\""
         let plain = "{\"pinVerifyCode\":\(verifyRaw),\"cmd\":\"\(v)\",\"type\":\"\(v)\",\"pin\":\"\(pin)\",\"wifiPassword\":\"\"}"
         guard let cipher = RSACrypto.encryptOAEP(plain, publicKeyPEM: pub) else { return "备用通道加密失败" }
-        let f2 = ["carId": cid, "token": tk, "isNev": "0", "s": cipher]
+        // phoneType / phoneId 是关键：你自己的网页版带了这两个字段才通过校验
+        let f2: [String: String] = [
+            "carId": cid,
+            "token": tk,
+            "isNev": "0",
+            "s": cipher,
+            "toast": "false",
+            "loading": "false",
+            "phoneType": "a",
+            "phoneId": "b",
+            "temperature": "0"
+        ]
         let (d3, _) = raw(Self.MI_HOST + "/app2/api/v3/control/execute",
                           method: "POST", form: f2, headers: miHeaders())
         guard let o3 = json(d3) else { return "备用通道无响应" }
