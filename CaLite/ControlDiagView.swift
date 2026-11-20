@@ -5,6 +5,7 @@ struct ControlDiagView: View {
     @State private var trace = ""
     @State private var toast: String?
     @State private var pinTokenInput = ""
+    @State private var devInput = ""
 
     private let api = CarAPI.shared
 
@@ -47,6 +48,7 @@ struct ControlDiagView: View {
         .onAppear {
             trace = Prefs.s("ctl_trace")
             pinTokenInput = Prefs.s("pin_token")
+            devInput = Prefs.s("dev_override")
         }
     }
 
@@ -65,6 +67,8 @@ struct ControlDiagView: View {
             line("carId", String(api.carId.prefix(8)) + (api.carId.isEmpty ? " 未登录" : "…"), C.muted)
             sep
             line("最近一次指令", Prefs.l("last_cmd_at") > 0 ? agoText : "无", C.muted)
+            sep
+            devRow
             sep
             pinTokenRow
 
@@ -102,6 +106,39 @@ struct ControlDiagView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.white)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    /// 手动填 deviceId：用于对齐官方 App 已绑定的设备指纹
+    private var devRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("deviceId（设备指纹）")
+                .font(.system(size: 11))
+                .foregroundColor(C.faint)
+            Text(api.deviceId)
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundColor(Prefs.s("dev_override").isEmpty ? C.muted : C.green)
+                .lineLimit(1).truncationMode(.middle)
+            HStack(spacing: 8) {
+                TextField("留空用本机 UUID", text: $devInput)
+                    .font(.system(size: 11, design: .monospaced))
+                    .textFieldStyle(.roundedBorder)
+                    .autocapitalization(.allCharacters)
+                    .disableAutocorrection(true)
+                Button("保存") {
+                    let v = devInput.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+                    Prefs.set(v, "dev_override")
+                    toast = v.isEmpty ? "已恢复本机 UUID" : "已覆盖"
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { toast = nil }
+                }
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(.white)
+                .padding(.horizontal, 12)
+                .frame(height: 30)
+                .background(C.blue)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
+        }
+        .padding(.vertical, 8)
     }
 
     /// 手动填 pinToken：填了就走这条路，不再尝试自动换取

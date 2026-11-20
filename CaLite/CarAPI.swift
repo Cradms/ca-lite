@@ -166,6 +166,9 @@ final class CarAPI {
     var isLoggedIn: Bool { !token.isEmpty && !carId.isEmpty }
 
     var deviceId: String {
+        // 手动覆盖优先（用于对齐官方已绑定的设备指纹）
+        let ov = Prefs.s("dev_override").trimmingCharacters(in: .whitespacesAndNewlines)
+        if !ov.isEmpty { return ov }
         // 服务端要标准 UUID（带横线、大写），旧版本存的无横线格式直接作废
         let cur = Prefs.s(K.device)
         if cur.count == 36 && cur.contains("-") { return cur.uppercased() }
@@ -1111,93 +1114,35 @@ final class CarAPI {
     static func clearTrace() { Prefs.set("", "ctl_trace") }
 
     /// get-pin-token 的 s 明文有多种可能，逐个试；命中即用
-    /// get-pin-token 的 s 明文：服务端报过「token为空」，
-    /// 说明登录 token 必须被加密进 s 里（header/body 都不带）。
-    /// 按「最简优先」排列，逐个试。
-    private func pinTokenCandidates(_ cmd: String, _ pvc: String) -> [String] {
-        let t = token, cid = carId, pin = controlPin, dev = deviceId
-        return [
-            #"{"token":"\#(t)","carId":"\#(cid)"}"#,
-            #"{"carId":"\#(cid)","token":"\#(t)"}"#,
-            #"{"token":"\#(t)","carId":"\#(cid)","pin":"\#(pin)"}"#,
-            #"{"token":"\#(t)"}"#,
-            #"{"token":"\#(t)","carId":"\#(cid)","pin":"\#(pin)","pinVerifyCode":"\#(pvc)"}"#,
-            #"{"carId":"\#(cid)","token":"\#(t)","pin":"\#(pin)","pinVerifyCode":"\#(pvc)"}"#,
-            #"{"token":"\#(t)","carId":"\#(cid)","pin":"\#(pin)","deviceId":"\#(dev)"}"#,
-            #"{"token":"\#(t)","carId":"\#(cid)","pin":"\#(pin)","pinVerifyCode":"\#(pvc)","deviceId":"\#(dev)"}"#,
-            #"{"token":"\#(t)","carId":"\#(cid)","pin":"\#(pin)","pinVerifyCode":"\#(pvc)","cmd":"\#(cmd)","type":"\#(cmd)"}"#,
-            #"{"carId":"\#(cid)","pin":"\#(pin)","pinVerifyCode":"\#(pvc)","cmd":"\#(cmd)","type":"\#(cmd)","wifiPassword":"","token":"\#(t)"}"#,
-            #"{"accessToken":"\#(t)","carId":"\#(cid)","pin":"\#(pin)"}"#,
-            #"{"token":"\#(t)","carId":"\#(cid)","pinCode":"\#(pin)"}"#,
-            #"token=\#(t)&carId=\#(cid)&pin=\#(pin)"#,
-            #"{"token":"\#(t)","carId":"\#(cid)","pin":"\#(pin)","timestamp":\#(Int(Date().timeIntervalSince1970 * 1000))}"#
-        ]
-    }
-
-    /// 官方 v5 链路：
-    /// createPinVerifyCode → security/key → get-pin-token → v5/control/execute
-    /// execute 的 pinVerifyCode 只取「校验码数字部分的前 15 位」
+    /// 官方 v5 链路：createPinVerifyCode → v5/control/execute
+    /// pinToken 需手动配置（服务端不认加密体里的 token，无法自动换）
     private func controlV5(_ cmd: String) -> String? {
-        let cid = carId, tk = token, pin = controlPin
+        let cid = carId, tk = token
         guard !cid.isEmpty, !tk.isEmpty else { return "无令牌" }
-        guard !pin.isEmpty else { return "无控车码" }
+        let pinToken = Prefs.s("pin_token").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !pinToken.isEmpty else { return "未配置 pinToken，跳过" }
 
-        // 1) 校验码
+        // 校验码（不需要 s）
         let (d1, _) = raw(Self.MI_HOST + "/app2/api/control/createPinVerifyCode",
                           method: "POST", form: ["token": tk], headers: miHeaders())
-        let t1 = d1.flatMap { String(data: $0, encoding: .utf8) } ?? ""
         guard let o1 = json(d1), (o1["code"] as? Int) == 0,
               let rawCode = o1["data"] as? String, !rawCode.isEmpty else {
-            Self.trace("v5 取校验码失败: \(String(t1.prefix(120)))")
+            Self.trace("v5 取校验码失败")
             return "取校验码失败"
         }
         let pvc = String(rawCode.prefix(15))
-        Self.trace("v5 校验码 \(rawCode) → \(pvc)")
 
-        // 2) 公钥（v5 版不带 carId）
-        let (d2, _) = raw(Self.MI_HOST + "/app2/api/v2/security/key?token=" + Self.urlEncode(tk),
-                          headers: miHeaders())
-        guard let o2 = json(d2), let pub = o2["data"] as? String, !pub.isEmpty else {
-            Self.trace("v5 取公钥失败")
-            return "取公钥失败"
-        }
-
-        // 3) pinToken：手动填写的优先（HAR 里抓到的是长期有效值）
-        var pinToken = Prefs.s("pin_token").trimmingCharacters(in: .whitespacesAndNewlines)
-        if !pinToken.isEmpty {
-            Self.trace("v5 使用手填 pinToken=\(pinToken)")
-        }
-        for (i, plain) in (pinToken.isEmpty ? pinTokenCandidates(cmd, pvc) : []).enumerated() {
-            guard let s = RSACrypto.encryptOAEP(plain, publicKeyPEM: pub) else { continue }
-            let url = Self.MI_HOST + "/app2/api/v5/control/get-pin-token?s=" + Self.urlEncode(s)
-            let (d3, _) = raw(url, method: "POST", form: ["carId": cid], headers: miHeaders())
-            let txt = d3.flatMap { String(data: $0, encoding: .utf8) } ?? ""
-            if let o3 = json(d3), (o3["code"] as? Int) == 0,
-               let pt = o3["data"] as? String, !pt.isEmpty {
-                pinToken = pt
-                Self.trace("v5 候选#\(i) 命中 pinToken=\(pt)")
-                break
-            }
-            let masked = plain.replacingOccurrences(of: pin, with: "******")
-            Self.trace("v5 候选#\(i) 失败 明文=\(masked) 响应=\(String(txt.prefix(200)))")
-        }
-        guard !pinToken.isEmpty else { return "未取到 pinToken" }
-
-        // 4) execute（全部走 query）
+        // execute（全部走 query）
         let q = "?carId=" + Self.urlEncode(cid)
             + "&deviceId=" + Self.urlEncode(deviceId)
             + "&pinToken=" + Self.urlEncode(pinToken)
             + "&pinVerifyCode=" + Self.urlEncode(pvc)
-        let (d4, _) = raw(Self.MI_HOST + "/app2/api/v5/control/execute" + q,
+        let (d2, _) = raw(Self.MI_HOST + "/app2/api/v5/control/execute" + q,
                           method: "POST", form: [:], headers: miHeaders())
-        let t4 = d4.flatMap { String(data: $0, encoding: .utf8) } ?? ""
-        guard let o4 = json(d4) else {
-            Self.trace("v5 无响应: \(String(t4.prefix(90)))")
-            return "无响应"
-        }
-        if (o4["code"] as? Int) == 0 { return nil }
-        let code = o4["code"] as? Int ?? -1
-        let msg = (o4["msg"] as? String) ?? ""
+        guard let o2 = json(d2) else { return "无响应" }
+        if (o2["code"] as? Int) == 0 { return nil }
+        let code = o2["code"] as? Int ?? -1
+        let msg = (o2["msg"] as? String) ?? ""
         Self.trace("v5 execute 失败 code=\(code) \(msg)")
         return "code=\(code) \(msg)"
     }
