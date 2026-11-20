@@ -28,6 +28,7 @@ struct TripsView: View {
     @State private var loading = true
     @State private var noTime = false
     @State private var err = ""
+    @State private var diag = ""
 
     private let api = CarAPI.shared
 
@@ -42,6 +43,13 @@ struct TripsView: View {
                             .font(.system(size: 34)).foregroundColor(C.faint)
                         Text(err.isEmpty ? "今天还没有行程" : err)
                             .font(.system(size: 13)).foregroundColor(C.muted)
+                        if !diag.isEmpty {
+                            Text(diag)
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(C.faint)
+                                .multilineTextAlignment(.center)
+                                .padding(.top, 4)
+                        }
                     }
                     .padding(.top, 60)
                 } else {
@@ -171,19 +179,25 @@ struct TripsView: View {
     private func load() {
         loading = true
         err = ""
-        api.trackPointsDetailed { pts in
+        diag = ""
+        api.trackPointsDetailed { pts, raw in
             loading = false
+            let withTime = pts.filter { $0.time != nil }.count
+            diag = "原始 \(raw) 条 → 解析出 \(pts.count) 个坐标，\(withTime) 个带时间"
+
             guard pts.count > 1 else {
-                err = "今天没有轨迹点"
+                err = raw > 0 ? "坐标解析失败（字段名不匹配）" : "今天没有轨迹数据"
                 trips = []
                 return
             }
-            let hasTime = pts.contains { $0.time != nil }
+            let hasTime = withTime > 0
             noTime = !hasTime
 
             if !hasTime {
                 let km = polylineKm(pts)
+                diag += "，总里程 \(String(format: "%.2f", km)) km"
                 trips = km > 0 ? [CarTrip(start: nil, end: nil, km: km, minutes: 0)] : []
+                if trips.isEmpty { err = "轨迹点距离过近，无法计算里程" }
                 return
             }
 
@@ -200,16 +214,20 @@ struct TripsView: View {
             }
             if !cur.isEmpty { segs.append(cur) }
 
-            trips = segs.compactMap { seg in
+            let built = segs.compactMap { seg -> CarTrip? in
                 guard seg.count > 1 else { return nil }
                 let km = polylineKm(seg)
-                guard km > 0.05 else { return nil }     // 过滤原地 GPS 抖动
-                let s = seg.first?.time
-                let e = seg.last?.time
-                let mins = Int((e?.timeIntervalSince(s ?? Date()) ?? 0) / 60.0)
-                return CarTrip(start: s, end: e, km: km, minutes: max(0, mins))
+                guard km > 0.05 else { return nil }
+                let st = seg.first?.time
+                let en = seg.last?.time
+                let mins = Int((en?.timeIntervalSince(st ?? Date()) ?? 0) / 60.0)
+                return CarTrip(start: st, end: en, km: km, minutes: max(0, mins))
             }
-            if trips.isEmpty { err = "今天没有有效行程（距离过短）" }
+            trips = built
+            diag += "，切成 \(segs.count) 段，有效 \(built.count) 段"
+            if trips.isEmpty {
+                err = segs.count > 1 ? "有 \(segs.count) 段但里程都太短" : "只有一个停车段，无有效行程"
+            }
         }
     }
 

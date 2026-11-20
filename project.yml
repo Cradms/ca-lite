@@ -18,8 +18,8 @@ targets:
         INFOPLIST_FILE: CaLite/Info.plist
         PRODUCT_BUNDLE_IDENTIFIER: app.ursaminor4185.leo8046
         PRODUCT_NAME: CaLite
-        MARKETING_VERSION: "1.0.0"
-        CURRENT_PROJECT_VERSION: "1"
+        MARKETING_VERSION: "1.1.0"
+        CURRENT_PROJECT_VERSION: "21"
         SWIFT_VERSION: "5.0"
         TARGETED_DEVICE_FAMILY: "1"
         CODE_SIGN_ENTITLEMENTS: CaLite/CaLite.entitlements

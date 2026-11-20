@@ -1251,7 +1251,7 @@ final class CarAPI {
         let time: Date?
     }
 
-    func trackPointsDetailed(done: @escaping ([TrackPoint]) -> Void) {
+    func trackPointsDetailed(done: @escaping ([TrackPoint], _ rawCount: Int) -> Void) {
         bg {
             self.legacyRefreshIfNeeded(force: false)
             let df = DateFormatter()
@@ -1297,7 +1297,7 @@ final class CarAPI {
             if out.contains(where: { $0.time != nil }) {
                 out.sort { ($0.time ?? Date.distantPast) < ($1.time ?? Date.distantPast) }
             }
-            DispatchQueue.main.async { done(out) }
+            DispatchQueue.main.async { done(out, arr.count) }
         }
     }
 

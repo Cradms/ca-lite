@@ -176,7 +176,7 @@ struct MoreView: View {
                     }
                 }
 
-                Text("CA Lite · 原生直连长安车联网")
+                Text("CA Lite \(versionText) · 原生直连长安车联网")
                     .font(.system(size: 10)).foregroundColor(C.faint)
                     .padding(.vertical, 12)
 
@@ -278,6 +278,12 @@ struct MoreView: View {
             .fill(C.border.opacity(0.6))
             .frame(height: 1)
             .padding(.leading, 32)
+    }
+
+    private var versionText: String {
+        let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "-"
+        let b = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "-"
+        return "v\(v) (\(b))"
     }
 
     private var maskedPhone: String {
